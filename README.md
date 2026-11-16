@@ -59,6 +59,7 @@ Un procès lance six prises de parole d'agents (deux manches, un témoin, puis l
 - **Décision de la cour** : les étapes numérotées du verdict deviennent une liste à cocher, mémorisée par procès, avec un bouton pour la copier en Markdown.
 - **Historique** des 30 derniers procès, avec un bouton pour les rejouer dans la salle.
 - **Son et musique** synthétisés dans le navigateur, avec un thème par orateur. Deux cases permettent de les couper.
+- **Voix** : les plaidoiries sont lues à voix haute par la synthèse vocale du navigateur, avec une hauteur de voix par rôle. La qualité dépend des voix françaises installées sur votre système ; sans voix française, la case est désactivée.
 - **Interrompre** arrête l'audience en cours.
 - Un clic sur la boîte de dialogue affiche tout de suite le texte en train de s'écrire.
 

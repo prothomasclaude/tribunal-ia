@@ -81,6 +81,7 @@
     <div class="tools">
       <label class="chk"><input id="snd" type="checkbox" checked> Son</label>
       <label class="chk"><input id="mus" type="checkbox" checked> Musique</label>
+      <label class="chk" id="voix-l"><input id="voix" type="checkbox" checked> Voix</label>
       <button id="stop" type="button" hidden>Interrompre</button>
     </div>
   </header>
@@ -390,9 +391,9 @@ function sfxGavel() {
 
 const wait = ms => new Promise(r => setTimeout(r, ms))
 let skip = false
-$('box').onclick = () => skip = true
+$('box').onclick = () => { skip = true; synth?.cancel() } // affiche tout le texte et coupe la lecture de cette réplique
 let ctl // AbortController du procès en cours
-$('stop').onclick = () => { ctl?.abort(); skip = true } // coupe la requête en cours et vide la machine à écrire
+$('stop').onclick = () => { ctl?.abort(); skip = true; synth?.cancel() } // coupe la requête en cours et vide la machine à écrire
 
 // Lit un flux SSE de chat completions, appelle onDelta à chaque morceau de texte, renvoie le texte complet
 async function readSSE(r, onDelta) {
@@ -441,20 +442,53 @@ async function ask(role, transcript, onDelta, canned) {
   return text
 }
 
-// msg = { text, done } rempli au fil du flux (ou une simple chaîne) ; la machine à écrire suit ce qui est arrivé
-function show(who, msg, pitch = 260) {
+// --- Voix : les plaidoiries sont lues par la synthèse vocale du navigateur, une hauteur de voix par rôle ---
+const synth = window.speechSynthesis
+const VOICE = { judge: { pitch: .5, rate: .95 }, pro: { pitch: .8, rate: 1.05 }, def: { pitch: 1.3, rate: 1.05 }, wit: { pitch: 1.1, rate: 1 } }
+let frVoices = []
+function loadVoices() {
+  frVoices = synth ? synth.getVoices().filter(v => v.lang.toLowerCase().startsWith('fr')) : []
+  $('voix').disabled = !frVoices.length // sans voix française, la lecture serait faite avec un accent étranger : on préfère se taire
+  $('voix-l').title = frVoices.length ? 'Lecture des plaidoiries à voix haute' : 'Aucune voix française installée dans ce navigateur'
+}
+loadVoices()
+synth?.addEventListener('voiceschanged', loadVoices) // la liste des voix arrive souvent après le chargement
+$('voix').checked = localStorage.voix !== '0'
+$('voix').onchange = () => { localStorage.voix = +$('voix').checked; if (!$('voix').checked) synth?.cancel() }
+// le navigateur refuse de parler avant un premier clic dans la page
+const voiceOn = () => frVoices.length && $('voix').checked && $('snd').checked && navigator.userActivation?.hasBeenActive !== false
+function say(role, text) {
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'fr-FR'
+  u.voice = frVoices[Object.keys(VOICE).indexOf(role) % frVoices.length] // des voix différentes quand le système en propose plusieurs
+  Object.assign(u, VOICE[role])
+  synth.speak(u)
+}
+
+// msg = { text, done } rempli au fil du flux (ou une simple chaîne) ; la machine à écrire suit ce qui est arrivé.
+// role fourni = réplique d'un personnage, lue à voix haute si la voix est active (sinon un blip par lettre).
+function show(who, msg, pitch = 260, role) {
   if (typeof msg === 'string') msg = { text: msg, done: true }
   $('who').textContent = who
   skip = false
+  const voiced = role && voiceOn()
   return new Promise(res => {
-    let i = 0
+    let i = 0, spoken = 0, typedAt
     const id = setInterval(() => {
-      const before = i
-      i = skip ? msg.text.length : Math.min(i + 1, msg.text.length)
-      $('line').textContent = msg.text.slice(0, i)
+      const before = Math.floor(i), len = msg.text.length
+      i = skip ? len : Math.min(i + (voiced ? .3 : 1), len) // avec la voix, le texte s'écrit à peu près à la vitesse de la parole
+      $('line').textContent = msg.text.slice(0, Math.floor(i))
       $('box').scrollTop = $('box').scrollHeight
-      if (!skip && i > before && i % 3 === 0 && msg.text[i] !== ' ') beep(pitch, .03, 'square', .03) // voix : un blip par rôle
-      if (msg.done && i >= msg.text.length) { clearInterval(id); res() }
+      if (voiced && !skip) { // chaque phrase est dite dès qu'elle est complète, sans attendre la fin du flux
+        const rest = msg.text.slice(spoken)
+        const chunk = msg.done ? rest : rest.match(/^[\s\S]*[.!?…]["»]?\s/)?.[0]
+        if (chunk) { spoken += chunk.length; if (chunk.trim()) say(role, chunk.trim()) }
+      } else if (!skip && Math.floor(i) > before && Math.floor(i) % 3 === 0 && msg.text[Math.floor(i)] !== ' ') beep(pitch, .03, 'square', .03)
+      if (!msg.done || i < len) return
+      typedAt ??= Date.now()
+      // on attend la fin de la lecture, mais jamais plus de 30 s : une voix muette ne doit pas bloquer l'audience
+      if (voiced && !skip && (synth.speaking || synth.pending) && Date.now() - typedAt < 30000) return
+      clearInterval(id); res()
     }, 18)
   })
 }
@@ -640,7 +674,7 @@ async function trial(replay) {
         $('obj').hidden = false; await wait(900); $('obj').hidden = true
       }
       st.thinking = false
-      await show(who, msg, ROLES[role].pitch)
+      await show(who, msg, ROLES[role].pitch, role)
       const text = await whole
       if (!canned) stats = { ms: Math.round(performance.now() - t0) } // vrai appel à un modèle : on chronomètre
       lines.push(`${ROLES[role].name} : ${text}`)
