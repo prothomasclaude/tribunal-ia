@@ -52,7 +52,7 @@ Dis à l'utilisateur en une ligne que la salle est ouverte dans son navigateur (
 
 ## 3. Tenir l'audience
 
-Deux manches par défaut (l'utilisateur peut en demander de 1 à 5). Ordre des prises de parole : Défense, Accusation, à chaque manche, puis le Juge une seule fois à la fin.
+Deux manches par défaut (l'utilisateur peut en demander de 1 à 5). Ordre des prises de parole : Défense, Accusation, à chaque manche ; un témoin expert après la première manche ; puis le Juge une seule fois à la fin.
 
 Lance chaque rôle avec l'outil Agent (`subagent_type: "general-purpose"`). Les avocats en `model: "sonnet"`, le Juge sans préciser de modèle. Les prises de parole se suivent : chaque agent a besoin de ce qui a été dit avant lui, donc pas de lancement en parallèle. Pour la deuxième manche et les suivantes, reprends le même agent avec SendMessage en lui donnant la dernière réplique adverse, pour qu'il garde le fil.
 
@@ -62,9 +62,27 @@ Consigne commune à donner à chaque agent, suivie de son rôle :
 
 - **Défense** : « Tu es l'avocat de la Défense. Pour une question, propose une solution concrète à ta première intervention. Pour une pièce, défends ses choix. Tiens ta position contre l'Accusation. 90 mots maximum. »
 - **Accusation** : « Tu es le Procureur. Attaque les failles (coût, complexité, risques, défauts concrets) et plaide pour une alternative précise que tu juges meilleure. 90 mots maximum. »
+- **Témoin** : voir « Le témoin expert » ci-dessous.
 - **Juge** : « Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum. » La salle transforme ces lignes numérotées en liste à cocher : si le Juge ne les numérote pas en chiffres, redemande-lui cette forme.
 
-**Dès qu'une réplique arrive, verse-la au greffe avant de lancer l'agent suivant**, sinon la salle reste figée. Le premier argument est l'orateur avec son modèle réel entre parenthèses, le second est le prochain orateur attendu (`Défense`, `Accusation` ou `Juge`). La réplique passe par l'entrée standard, telle que l'agent l'a rendue, sans réécriture ni résumé :
+### Le témoin expert
+
+Après la première manche, appelle un témoin à la barre. Son rôle : apporter des faits que les avocats n'ont pas, ou trancher un fait qu'ils se disputent. C'est toi qui choisis sa spécialité, d'après ce qui vient d'être plaidé :
+
+- un fait est contesté entre les parties (« la pièce contient ceci », « cet outil sait faire cela ») : un **enquêteur**, qui va vérifier dans les pièces ou sur internet ;
+- un angle important manque aux débats : un **expert** de cet angle (sécurité, coût, expérience utilisateur, accessibilité, performance, maintenance, droit).
+
+Lance-le comme les avocats (agent `general-purpose`, `model: "sonnet"`), avec la consigne commune, la transcription, et ce rôle :
+
+> Tu es un témoin expert neutre, appelé à la barre : {spécialité}. Question de la cour : {le point précis à éclairer}. Vérifie avant de parler, dans les pièces et, si un fait extérieur est en jeu, par une recherche sur internet. Dis ce qui est exact et ce qui est faux dans ce que chaque partie a affirmé, avec l'élément précis qui le prouve. Tu ne plaides pas et tu ne désignes pas de gagnant. 80 mots maximum.
+
+Verse son témoignage au greffe avec un nom qui commence par `Témoin` et annonce sa spécialité, par exemple `"Témoin expert en accessibilité (Claude Sonnet)"` ou `"Témoin enquêteur (Claude Sonnet)"`. Pour que la salle le montre à la barre pendant qu'il prépare son témoignage, donne `"Témoin"` comme prochain orateur en versant la réplique qui le précède.
+
+Les avocats de la deuxième manche et le Juge reçoivent le témoignage avec le reste des débats. Demande au Juge d'en tenir compte.
+
+Un seul témoin par défaut. L'utilisateur peut demander un procès sans témoin, ou un second témoin après la deuxième manche (deux au maximum).
+
+**Dès qu'une réplique arrive, verse-la au greffe avant de lancer l'agent suivant**, sinon la salle reste figée. Le premier argument est l'orateur avec son modèle réel entre parenthèses, le second est le prochain orateur attendu (`Défense`, `Accusation`, `Témoin` ou `Juge`). La réplique passe par l'entrée standard, telle que l'agent l'a rendue, sans réécriture ni résumé :
 
 ```bash
 python3 "$SKILL/greffe.py" add "Défense (Claude Sonnet)" "Accusation" <<'REPLIQUE'

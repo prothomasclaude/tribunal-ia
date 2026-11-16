@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tribunal des IA</title>
 <style>
-  :root { color-scheme: dark; scrollbar-color: #6d5c85 #000; --bg: #17121f; --panel: #241c30; --line: #6d5c85; --ink: #eee; --dim: #a79bbd; --gold: #ffd84a; --pro: #ef6a62; --def: #6f9bf5; }
+  :root { color-scheme: dark; scrollbar-color: #6d5c85 #000; --bg: #17121f; --panel: #241c30; --line: #6d5c85; --ink: #eee; --dim: #a79bbd; --gold: #ffd84a; --pro: #ef6a62; --def: #6f9bf5; --wit: #5fcf9a; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; }
   main { max-width: 1240px; margin: auto; padding: 16px; }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-bottom: 12px; }
@@ -39,6 +39,7 @@
   #log li strong, #hist li strong { display: block; }
   .l-pro { border-color: var(--pro) !important; } .l-pro strong { color: var(--pro); }
   .l-def { border-color: var(--def) !important; } .l-def strong { color: var(--def); }
+  .l-wit { border-color: var(--wit) !important; } .l-wit strong { color: var(--wit); }
   .l-judge { border-color: var(--gold) !important; } .l-judge strong { color: var(--gold); }
 
   #decision { margin-top: 16px; border: 4px solid var(--gold); background: #000; padding: 12px 16px; }
@@ -135,13 +136,17 @@ const ROLES = {
   def: { name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
   pro: { name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
   judge: { name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
+  // field : le témoin n'a pas de champ modèle à lui, il emprunte celui du Juge
+  wit: { name: 'Témoin', field: 'judge', pitch: 260, sys: "Tu es un témoin expert neutre, appelé à la barre entre deux manches. Choisis la spécialité la plus utile à l'affaire (sécurité, coût, expérience utilisateur, performance, maintenance) et annonce-la en commençant. Éclaire le point le plus disputé par des faits vérifiables et dis ce qui est exact ou faux dans ce que chaque partie a affirmé. Tu ne désignes pas de gagnant. 70 mots maximum." },
 }
+const FIELDS = ['pro', 'judge', 'def'] // les rôles qui ont un champ modèle dans le formulaire
 const roleOf = who => Object.keys(ROLES).find(r => who.startsWith(ROLES[r].name))
 const DEMO = {
   def: ["Votre Honneur, ma cliente est une simple page HTML. Pas de build, pas de serveur, pas de larmes. Elle fait le travail et rentre dîner à l'heure.",
         "Calomnie ! Un framework pour trois boutons, c'est louer un stade pour jouer aux billes. Ma cliente tient en un fichier et le jury peut la lire en entier."],
   pro: ["Une page HTML ! Et demain, quand il faudra un état partagé, des tests, une équipe ? Je réclame un vrai framework, avec composants et typage.",
         "La Défense confond simplicité et négligence. Sans structure, chaque ajout sera un crime de plus au dossier. Je maintiens mes réquisitions."],
+  wit: ["Expert en maintenance, je jure de dire la vérité. Fait numéro un : trois boutons ne justifient aucun framework. Fait numéro deux : sans tests, même un seul fichier finit par mordre. Chaque partie a donc à moitié raison, ce qui est très agaçant pour tout le monde."],
   judge: ["Silence ! La cour donne raison à la Défense : le besoin est petit, la solution doit l'être aussi.\n\nDécision :\n1. Un seul fichier HTML, sans build.\n2. On mesure l'usage réel.\n3. On ne passe au framework que si la douleur est prouvée.\n\nL'audience est levée. (Mode démo : ajoutez une clé OpenRouter pour un vrai procès.)"],
 }
 
@@ -215,6 +220,21 @@ const SPRITES = {
     ...SUIT,
   ] },
 }
+SPRITES.wit = { noBlink: true, pal: { h: '#c8643c', H: '#e89a6a', r: '#2f7d5b', R: '#1f5a40', t: '#e8d27a' }, rows: [
+  '....kkkkkkkk....',
+  '...khhhhhhhhk...',
+  '..khhhhHHHhhhk..',
+  '..khhhhhhhhhhk..',
+  '..khhsssssshhk..',
+  '..kssssssssssk..',
+  '..kssssssssssk..',
+  '..kkwekskweksk..', // lunettes : le clignement les effacerait, d'où noBlink
+  '..kssssssssssk..',
+  '..ksssssdssssk..',
+  '..kssssmmssssk..',
+  '...kddssssddk...',
+  ...SUIT,
+] }
 for (const r in SPRITES) console.assert(SPRITES[r].rows.length === 20 && SPRITES[r].rows.every(l => l.length === 16), 'sprite mal formé : ' + r)
 
 // (x, y) = centre du cou ; la tête occupe les 12 lignes au-dessus
@@ -227,7 +247,7 @@ function person(role, x, y, t) {
       if (ch !== '.') P(x - 8 + i, y - 12 + j, 1, 1, sp.pal[ch] || PAL[ch])
     }
   })
-  if (((t / 150 | 0) + x) % 20 === 0) P(x - 4, y - 5, 8, 1, PAL.d) // clignement
+  if (!sp.noBlink && ((t / 150 | 0) + x) % 20 === 0) P(x - 4, y - 5, 8, 1, PAL.d) // clignement
   if (talking && (t / 150 | 0) % 2) P(x - 1, y - 2, 2, 2, '#4a1515')
   if (talking && sp.arm) { P(x + sp.arm * 8, y + 3, sp.arm * 5, 3, sp.pal.r); P(x + sp.arm * 13, y + 3, sp.arm * 3, 2, PAL.s) } // bras accusateur
   if (talking) P(x - 1, y - 16, 3, 2, '#ffd84a')
@@ -259,13 +279,15 @@ function draw(t) {
   P(30, 86, 40, 20, '#8a5a32'); P(28, 84, 44, 3, '#a9713f')
   person('def', 190, 76, t)
   P(170, 86, 40, 20, '#8a5a32'); P(168, 84, 44, 3, '#a9713f')
+  if (st.speaker === 'wit') person('wit', 120, 96, t) // le témoin ne vient à la barre que lorsqu'il est appelé
+  P(110, 103, 20, 6, '#8a5a32'); P(108, 101, 24, 3, '#a9713f') // la barre des témoins
   crowd(t)
   requestAnimationFrame(draw)
 }
 requestAnimationFrame(draw)
 
 // --- Modèles : liste publique OpenRouter, pas d'identifiants en dur qui périment ---
-for (const r in ROLES) {
+for (const r of FIELDS) {
   const el = $('m-' + r)
   el.value = localStorage['m-' + r] || ''
   el.onchange = () => localStorage['m-' + r] = el.value
@@ -274,7 +296,7 @@ $('key').value = localStorage.key_or || ''
 $('key').onchange = () => localStorage.key_or = $('key').value.trim()
 fetch('https://openrouter.ai/api/v1/models').then(r => r.json()).then(({ data }) => {
   $('models').append(...data.map(m => new Option(m.name, m.id)))
-  for (const r in ROLES) $('m-' + r).value ||= data.find(m => m.id.startsWith(ROLES[r].prefix))?.id || ''
+  for (const r of FIELDS) $('m-' + r).value ||= data.find(m => m.id.startsWith(ROLES[r].prefix))?.id || ''
 }).catch(() => {}) // hors ligne : on tape l'identifiant à la main
 
 // --- Débat ---
@@ -311,6 +333,7 @@ const THEMES = {
     bass: Array.from({ length: 32 }, (_, i) => i % 2 ? 0 : i < 24 ? 82 : 87),
     lead: Array.from({ length: 32 }, (_, i) => ({ 0: 659, 8: 622, 16: 659, 24: 698 })[i] || 0) },
 }
+THEMES.wit = { wave: 'triangle', hat: 4, bass: THEMES.def.bass, lead: THEMES.judge.lead } // témoin : basse posée, notes rares
 $('mus').checked = localStorage.mus !== '0'
 $('mus').onchange = () => localStorage.mus = +$('mus').checked
 let musicId
@@ -329,6 +352,10 @@ function music(on) {
 function sfxObjection() {
   st.stir = performance.now()
   beep(520, .1, 'sawtooth', .12); beep(780, .4, 'sawtooth', .12, .1); noise(1, .3, 700)
+}
+function sfxWitness() {
+  st.stir = performance.now()
+  beep(660, .12, 'triangle', .12); beep(880, .25, 'triangle', .12, .13); noise(.8, .2, 600)
 }
 function sfxGavel() {
   st.gavel = st.stir = performance.now()
@@ -377,7 +404,7 @@ async function ask(role, transcript, onDelta, canned) {
     method: 'POST', signal: ctl.signal,
     headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: $('m-' + role).value, max_tokens: 1500, stream: true,
+      model: $('m-' + (ROLES[role].field || role)).value, max_tokens: 1500, stream: true,
       messages: [
         { role: 'system', content: COMMON + ROLES[role].sys },
         { role: 'user', content: `Demande de l'utilisateur : ${$('case').value}\n\nDébats jusqu'ici :\n${transcript || "(aucun, tu ouvres l'audience)"}\n\nÀ toi, ${ROLES[role].name}.` },
@@ -497,6 +524,7 @@ async function trial(replay) {
   if (replay) $('stage').scrollIntoView({ behavior: 'smooth', block: 'start' })
   else {
     for (let i = 0; i < +$('rounds').value; i++) order.push('def', 'pro')
+    order.splice(2, 0, 'wit') // le témoin expert passe à la barre après la première manche
     order.push('judge')
   }
   try {
@@ -518,8 +546,8 @@ async function trial(replay) {
       } else {
         if (i >= order.length) break
         role = order[i]
-        who = `${ROLES[role].name} (${live ? $('m-' + role).value : 'démo'})`
-        canned = live ? null : DEMO[role][(i >> 1) % DEMO[role].length]
+        who = `${role === 'wit' ? 'Témoin expert' : ROLES[role].name} (${live ? $('m-' + (ROLES[role].field || role)).value : 'démo'})`
+        canned = live ? null : DEMO[role][saved.filter(l => roleOf(l.who) === role).length % DEMO[role].length]
       }
       st.speaker = role; st.thinking = true
       $('who').textContent = who; $('line').textContent = '…'
@@ -531,7 +559,11 @@ async function trial(replay) {
       await started // premier mot reçu, ou échec
       if (!msg.text) await whole
       if (role === 'judge') sfxGavel()
-      else if (lines.length) { sfxObjection(); $('obj').hidden = false; await wait(900); $('obj').hidden = true }
+      else if (lines.length) {
+        $('obj').textContent = role === 'wit' ? 'TÉMOIN À LA BARRE !' : 'OBJECTION !'
+        role === 'wit' ? sfxWitness() : sfxObjection()
+        $('obj').hidden = false; await wait(900); $('obj').hidden = true
+      }
       st.thinking = false
       await show(who, msg, ROLES[role].pitch)
       const text = await whole

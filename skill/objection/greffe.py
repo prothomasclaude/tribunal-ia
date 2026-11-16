@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]  # racine du dépôt, même q
 F = ROOT / 'proces.js'
 REGLEMENT = ROOT / 'reglement.md'  # critères permanents de l'utilisateur, hors dépôt
 PREFIX = 'window.TRIAL = '
-ROLES = ('Défense', 'Accusation', 'Juge')
+ROLES = ('Défense', 'Accusation', 'Témoin', 'Juge')
 
 
 def load():
