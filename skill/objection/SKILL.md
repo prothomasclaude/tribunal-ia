@@ -54,9 +54,9 @@ Dis à l'utilisateur en une ligne que la salle est ouverte dans son navigateur (
 
 ## 3. Tenir l'audience
 
-Deux manches par défaut (l'utilisateur peut en demander de 1 à 5). Ordre des prises de parole : Défense, Accusation, à chaque manche ; un témoin expert après la première manche ; puis le Juge une seule fois à la fin.
+Deux manches par défaut (l'utilisateur peut en demander de 1 à 5). Ordre des prises de parole : Défense, Accusation, à chaque manche ; un témoin expert après la première manche ; le vote du jury après la dernière manche ; puis le Juge une seule fois à la fin.
 
-Lance chaque rôle avec l'outil Agent (`subagent_type: "general-purpose"`). Les avocats en `model: "sonnet"`, le Juge sans préciser de modèle. Les prises de parole se suivent : chaque agent a besoin de ce qui a été dit avant lui, donc pas de lancement en parallèle. Pour la deuxième manche et les suivantes, reprends le même agent avec SendMessage en lui donnant la dernière réplique adverse, pour qu'il garde le fil.
+Lance chaque rôle avec l'outil Agent (`subagent_type: "general-purpose"`). Les avocats en `model: "sonnet"`, le Juge sans préciser de modèle. Les prises de parole se suivent : chaque agent a besoin de ce qui a été dit avant lui, donc pas de lancement en parallèle (sauf les cinq jurés, voir plus bas). Pour la deuxième manche et les suivantes, reprends le même agent avec SendMessage en lui donnant la dernière réplique adverse, pour qu'il garde le fil.
 
 Consigne commune à donner à chaque agent, suivie de son rôle :
 
@@ -65,6 +65,7 @@ Consigne commune à donner à chaque agent, suivie de son rôle :
 - **Défense** : « Tu es l'avocat de la Défense. Pour une question, propose une solution concrète à ta première intervention. Pour une pièce, défends ses choix. Tiens ta position contre l'Accusation. 90 mots maximum. »
 - **Accusation** : « Tu es le Procureur. Attaque les failles (coût, complexité, risques, défauts concrets) et plaide pour une alternative précise que tu juges meilleure. 90 mots maximum. »
 - **Témoin** : voir « Le témoin expert » ci-dessous.
+- **Jury** : voir « Le jury » ci-dessous.
 - **Juge** : « Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum. » La salle transforme ces lignes numérotées en liste à cocher : si le Juge ne les numérote pas en chiffres, redemande-lui cette forme.
 
 ### Le témoin expert
@@ -84,7 +85,42 @@ Les avocats de la deuxième manche et le Juge reçoivent le témoignage avec le 
 
 Un seul témoin par défaut. L'utilisateur peut demander un procès sans témoin, ou un second témoin après la deuxième manche (deux au maximum).
 
-**Dès qu'une réplique arrive, verse-la au greffe avant de lancer l'agent suivant**, sinon la salle reste figée. Le premier argument est l'orateur avec son modèle réel entre parenthèses, le second est le prochain orateur attendu (`Défense`, `Accusation`, `Témoin` ou `Juge`). La réplique passe par l'entrée standard, telle que l'agent l'a rendue, sans réécriture ni résumé :
+### Le jury
+
+Après la dernière manche et avant le Juge, cinq jurés votent à main levée. Ce sont cinq agents séparés, pour que les votes soient vraiment indépendants : lance-les **en parallèle**, cinq appels Agent dans le même message (`general-purpose`, `model: "haiku"`). C'est la seule étape du procès qui se lance en parallèle.
+
+Chaque juré reçoit l'affaire, le règlement s'il existe, la transcription complète (témoignage compris) et son regard :
+
+- Le pragmatique : ce qui marche le plus vite avec le moins d'efforts.
+- La sceptique : seuls comptent les faits prouvés pendant les débats.
+- Le comptable : ce que chaque option coûte, en argent et en temps.
+- L'utilisatrice : ce que vivra la personne qui se servira du résultat.
+- Le mainteneur : ce qu'il faudra encore entretenir dans un an.
+
+Consigne de chaque juré :
+
+> Tu es juré dans un tribunal comique. Ton regard : {regard}. Voici l'affaire et les débats : {affaire, règlement, transcription}. N'utilise aucun outil, réponds directement. Vote pour la partie qui t'a le plus convaincu, de ton point de vue. Ta réponse tient en une seule ligne : « Défense » ou « Accusation », deux-points, puis ta raison en douze mots au plus.
+
+Assemble les cinq votes en une seule réplique, une ligne par juré, puis le décompte. La salle lève la main de chaque juré en lisant le mot `vote` suivi du camp, donc respecte exactement cette forme :
+
+```bash
+python3 "$SKILL/greffe.py" add "Jury (Claude Haiku)" "Juge" --ms 8200 <<'REPLIQUE'
+Le pragmatique vote Défense : sa raison.
+La sceptique vote Accusation : sa raison.
+Le comptable vote Défense : sa raison.
+L'utilisatrice vote Défense : sa raison.
+Le mainteneur vote Accusation : sa raison.
+Résultat : 3 voix pour la Défense, 2 pour l'Accusation.
+REPLIQUE
+```
+
+Pour `--ms`, donne la durée du juré le plus lent. Pour que la salle montre le jury en délibération, donne `"Jury"` comme prochain orateur en versant la réplique qui le précède. Si un juré échoue ou ne vote pas clairement, écris « s'abstient » à la place de « vote ... » et compte les voix restantes.
+
+Le vote est consultatif. Donne-le au Juge avec les débats et demande-lui d'en tenir compte et de dire, s'il s'en écarte, pourquoi.
+
+L'utilisateur peut demander un procès sans jury.
+
+**Dès qu'une réplique arrive, verse-la au greffe avant de lancer l'agent suivant**, sinon la salle reste figée. Le premier argument est l'orateur avec son modèle réel entre parenthèses, le second est le prochain orateur attendu (`Défense`, `Accusation`, `Témoin`, `Jury` ou `Juge`). La réplique passe par l'entrée standard, telle que l'agent l'a rendue, sans réécriture ni résumé :
 
 ```bash
 python3 "$SKILL/greffe.py" add "Défense (Claude Sonnet)" "Accusation" <<'REPLIQUE'

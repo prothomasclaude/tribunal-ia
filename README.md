@@ -2,7 +2,7 @@
 
 Une salle d'audience en pixel art où des agents IA plaident, objectent et tranchent vos décisions techniques.
 
-Vous posez une question (« quelle stack pour mon application ? ») ou vous soumettez une pièce à juger (un fichier, un artefact). La Défense propose, l'Accusation attaque, un témoin expert vient à la barre, ils se répondent, puis le Juge rend un verdict avec une décision en étapes concrètes. Le tout se joue à l'écran, avec public, objections, musique et coups de marteau.
+Vous posez une question (« quelle stack pour mon application ? ») ou vous soumettez une pièce à juger (un fichier, un artefact). La Défense propose, l'Accusation attaque, un témoin expert vient à la barre, ils se répondent, le jury vote à main levée, puis le Juge rend un verdict avec une décision en étapes concrètes. Le tout se joue à l'écran, avec public, objections, musique et coups de marteau.
 
 ![La salle d'audience pendant un verdict](docs/capture.png)
 
@@ -20,7 +20,7 @@ Aucune configuration. Sert à voir la scène et à entendre le son.
 
 ### 2. Avec des modèles au choix, via OpenRouter
 
-Collez une clé [OpenRouter](https://openrouter.ai) dans le formulaire et choisissez un modèle par rôle (le témoin utilise celui du Juge). Les réponses arrivent en streaming.
+Collez une clé [OpenRouter](https://openrouter.ai) dans le formulaire et choisissez un modèle par rôle (le témoin et le jury utilisent celui du Juge ; dans ce mode, les cinq votes du jury viennent d'un seul appel au modèle). Les réponses arrivent en streaming.
 
 La clé est enregistrée dans le `localStorage` de votre navigateur et n'est envoyée qu'à `openrouter.ai`. C'est adapté à un usage local, pas à une page hébergée pour d'autres.
 
@@ -50,7 +50,9 @@ Le lien symbolique est nécessaire : la commande retrouve la salle à partir de 
 
 **Le témoin expert.** Après la première manche, Claude Code appelle à la barre un spécialiste choisi selon les débats : un enquêteur qui vérifie un fait disputé dans les pièces ou sur internet, ou un expert d'un angle oublié (sécurité, coût, accessibilité...). Il établit les faits sans prendre parti.
 
-Un procès lance six prises de parole d'agents (deux manches, un témoin, puis le Juge), donc il consomme sensiblement plus qu'une question ordinaire.
+**Le jury.** Avant le verdict, cinq jurés aux regards différents (le pragmatique, la sceptique, le comptable, l'utilisatrice, le mainteneur) votent à main levée, chacun avec sa raison. Ce sont cinq petits agents indépendants. Leur vote est consultatif : le Juge en tient compte et dit pourquoi s'il s'en écarte.
+
+Un procès lance onze agents (deux manches, un témoin, cinq jurés, puis le Juge), donc il consomme sensiblement plus qu'une question ordinaire.
 
 ## Dans la salle
 

@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tribunal des IA</title>
 <style>
-  :root { color-scheme: dark; scrollbar-color: #6d5c85 #000; --bg: #17121f; --panel: #241c30; --line: #6d5c85; --ink: #eee; --dim: #a79bbd; --gold: #ffd84a; --pro: #ef6a62; --def: #6f9bf5; --wit: #5fcf9a; }
+  :root { color-scheme: dark; scrollbar-color: #6d5c85 #000; --bg: #17121f; --panel: #241c30; --line: #6d5c85; --ink: #eee; --dim: #a79bbd; --gold: #ffd84a; --pro: #ef6a62; --def: #6f9bf5; --wit: #5fcf9a; --jury: #c79bf2; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; }
   main { max-width: 1240px; margin: auto; padding: 16px; }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-bottom: 12px; }
@@ -40,6 +40,7 @@
   .l-pro { border-color: var(--pro) !important; } .l-pro strong { color: var(--pro); }
   .l-def { border-color: var(--def) !important; } .l-def strong { color: var(--def); }
   .l-wit { border-color: var(--wit) !important; } .l-wit strong { color: var(--wit); }
+  .l-jury { border-color: var(--jury) !important; } .l-jury strong { color: var(--jury); }
   .l-judge { border-color: var(--gold) !important; } .l-judge strong { color: var(--gold); }
 
   .fiches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; color: var(--dim); }
@@ -103,6 +104,7 @@
         <button type="button" class="ghost" data-fiche="judge">Juge</button>
         <button type="button" class="ghost" data-fiche="def">Défense</button>
         <button type="button" class="ghost" data-fiche="wit">Témoin</button>
+        <button type="button" class="ghost" data-fiche="jury">Jury</button>
         <button type="button" class="ghost" data-fiche="dossier">Dossier et pièces</button>
       </div>
     </section>
@@ -159,9 +161,10 @@ const COMMON = "Tu joues dans un tribunal comique où des IA débattent de la me
 const ROLES = {
   def: { bio: "Avocat de la Défense. Propose une solution ou défend la pièce jugée, et tient sa position.", name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
   pro: { bio: "Procureur. Cherche les failles et plaide pour une alternative précise.", name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
-  judge: { bio: "Juge. Écoute les débats, puis rend le verdict et la décision à appliquer.", name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
+  judge: { bio: "Juge. Écoute les débats, puis rend le verdict et la décision à appliquer.", name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, en tenant compte du témoin et du vote du jury, qui reste consultatif, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
   // field : le témoin n'a pas de champ modèle à lui, il emprunte celui du Juge
   wit: { bio: "Témoin expert. Appelé à la barre après la première manche pour établir les faits, sans prendre parti.", name: 'Témoin', field: 'judge', pitch: 260, sys: "Tu es un témoin expert neutre, appelé à la barre entre deux manches. Choisis la spécialité la plus utile à l'affaire (sécurité, coût, expérience utilisateur, performance, maintenance) et annonce-la en commençant. Éclaire le point le plus disputé par des faits vérifiables et dis ce qui est exact ou faux dans ce que chaque partie a affirmé. Tu ne désignes pas de gagnant. 70 mots maximum." },
+  jury: { bio: "Jury. Cinq jurés aux regards différents votent à main levée avant le verdict. Leur vote est consultatif : le Juge peut s'en écarter.", name: 'Jury', field: 'judge', pitch: 300, sys: "Tu es le jury : cinq jurés aux regards différents (le pragmatique, la sceptique, le comptable, l'utilisatrice, le mainteneur). Chacun vote pour la Défense ou pour l'Accusation d'après les débats. Écris exactement cinq lignes, une par juré, sous la forme « Le pragmatique vote Défense : sa raison en dix mots au plus. », puis une sixième ligne « Résultat : N voix pour la Défense, M pour l'Accusation. » Rien d'autre." },
 }
 const FIELDS = ['pro', 'judge', 'def'] // les rôles qui ont un champ modèle dans le formulaire
 const roleOf = who => Object.keys(ROLES).find(r => who.startsWith(ROLES[r].name))
@@ -171,6 +174,7 @@ const DEMO = {
   pro: ["Une page HTML ! Et demain, quand il faudra un état partagé, des tests, une équipe ? Je réclame un vrai framework, avec composants et typage.",
         "La Défense confond simplicité et négligence. Sans structure, chaque ajout sera un crime de plus au dossier. Je maintiens mes réquisitions."],
   wit: ["Expert en maintenance, je jure de dire la vérité. Fait numéro un : trois boutons ne justifient aucun framework. Fait numéro deux : sans tests, même un seul fichier finit par mordre. Chaque partie a donc à moitié raison, ce qui est très agaçant pour tout le monde."],
+  jury: ["Le pragmatique vote Défense : un fichier suffit pour trois boutons.\nLa sceptique vote Accusation : sans tests, je n'y crois pas.\nLe comptable vote Défense : zéro dépendance, zéro facture.\nL'utilisatrice vote Défense : je veux juste que ça marche.\nLe mainteneur vote Accusation : c'est moi qui relirai ce fichier.\nRésultat : 3 voix pour la Défense, 2 pour l'Accusation."],
   judge: ["Silence ! La cour donne raison à la Défense : le besoin est petit, la solution doit l'être aussi.\n\nDécision :\n1. Un seul fichier HTML, sans build.\n2. On mesure l'usage réel.\n3. On ne passe au framework que si la douleur est prouvée.\n\nL'audience est levée. (Mode démo : ajoutez une clé OpenRouter pour un vrai procès.)"],
 }
 
@@ -289,6 +293,22 @@ function crowd(t) {
     P(x - 4, y + 7, 16, 12, PAL.k); P(x - 3, y + 8, 14, 12, COAT[i % 4])
   }
 }
+// Le banc du jury, à droite du Juge. Chaque juré lève la main quand la ligne de son vote s'écrit dans la boîte de dialogue,
+// avec un carton de la couleur du camp choisi (bleu Défense, rouge Accusation).
+const JURY_X = [176, 189, 202, 215, 228]
+// une ligne par juré : un juré qui s'abstient garde la main baissée sans décaler les suivants
+const votesIn = text => text.split('\n').filter(l => l.trim()).map(l => { const m = l.match(/vote (?:pour )?(?:la |l')?(Défense|Accusation)/i); return m && (/^d/i.test(m[1]) ? 'def' : 'pro') })
+function jury(t) {
+  const votes = st.speaker === 'jury' ? votesIn($('line').textContent) : []
+  JURY_X.forEach((x, k) => {
+    P(x - 3, 33, 7, 8, PAL.k); P(x - 2, 34, 5, 6, PAL.s); P(x - 2, 34, 5, 2, HAIR[(k * 2 + 1) % 6])
+    P(x - 1, 37, 1, 1, PAL.e); P(x + 1, 37, 1, 1, PAL.e)
+    P(x - 4, 41, 9, 3, COAT[k % 4])
+    if (votes[k]) { P(x + 4, 29, 2, 8, PAL.s); P(x + 2, 25, 6, 4, PAL.k); P(x + 3, 26, 4, 2, votes[k] === 'def' ? '#6f9bf5' : '#ef6a62') }
+  })
+  P(168, 44, 70, 9, '#8a5a32'); P(166, 43, 74, 2, '#a9713f')
+  if (st.speaker === 'jury' && st.thinking && !votes.some(Boolean)) for (let k = 0; k < (t / 300 | 0) % 4; k++) P(198 + k * 3, 27, 2, 2, '#fff')
+}
 function draw(t) {
   P(0, 0, 240, 120, '#3b2a4a')
   for (let x = 0; x < 240; x += 24) P(x, 0, 1, 80, '#2e2039')
@@ -300,6 +320,7 @@ function draw(t) {
   P(70, 82, 100, 6, '#7d5540'); P(70, 82, 100, 1, '#a9713f') // estrade posée sur le plancher
   const down = t - st.gavel < 900 && (t / 150 | 0) % 2 // le marteau frappe au verdict
   P(138, down ? 34 : 26, 9, 4, '#5a3a1e'); P(141, down ? 30 : 30, 2, 8, '#c9a26b')
+  jury(t)
   person('pro', 50, 76, t)
   P(30, 86, 40, 20, '#8a5a32'); P(28, 84, 44, 3, '#a9713f')
   person('def', 190, 76, t)
@@ -358,7 +379,7 @@ const THEMES = {
     bass: Array.from({ length: 32 }, (_, i) => i % 2 ? 0 : i < 24 ? 82 : 87),
     lead: Array.from({ length: 32 }, (_, i) => ({ 0: 659, 8: 622, 16: 659, 24: 698 })[i] || 0) },
 }
-THEMES.wit = { wave: 'triangle', hat: 4, bass: THEMES.def.bass, lead: THEMES.judge.lead } // témoin : basse posée, notes rares
+THEMES.jury = THEMES.wit = { wave: 'triangle', hat: 4, bass: THEMES.def.bass, lead: THEMES.judge.lead } // témoin : basse posée, notes rares
 $('mus').checked = localStorage.mus !== '0'
 $('mus').onchange = () => localStorage.mus = +$('mus').checked
 let musicId
@@ -444,7 +465,7 @@ async function ask(role, transcript, onDelta, canned) {
 
 // --- Voix : les plaidoiries sont lues par la synthèse vocale du navigateur, une hauteur de voix par rôle ---
 const synth = window.speechSynthesis
-const VOICE = { judge: { pitch: .5, rate: .95 }, pro: { pitch: .8, rate: 1.05 }, def: { pitch: 1.3, rate: 1.05 }, wit: { pitch: 1.1, rate: 1 } }
+const VOICE = { judge: { pitch: .5, rate: .95 }, pro: { pitch: .8, rate: 1.05 }, def: { pitch: 1.3, rate: 1.05 }, wit: { pitch: 1.1, rate: 1 }, jury: { pitch: 1, rate: 1.1 } }
 let frVoices = []
 function loadVoices() {
   frVoices = synth ? synth.getVoices().filter(v => v.lang.toLowerCase().startsWith('fr')) : []
@@ -564,6 +585,7 @@ const SPOTS = { wit: [120, 96], judge: [120, 31], pro: [50, 76], def: [190, 76] 
 function spotAt(e) {
   const k = 240 / c.canvas.clientWidth, x = e.offsetX * k, y = e.offsetY * k
   if (x >= 111 && x <= 129 && y >= 47 && y <= 62) return 'dossier'
+  if (x >= 166 && y >= 26 && y <= 53) return 'jury'
   return Object.keys(SPOTS).find(r => Math.abs(x - SPOTS[r][0]) <= 11 && y >= SPOTS[r][1] - 15 && y <= SPOTS[r][1] + 9)
 }
 c.canvas.onclick = e => { const spot = spotAt(e); if (spot) openFiche(spot) }
@@ -633,7 +655,7 @@ async function trial(replay) {
   else {
     for (let i = 0; i < +$('rounds').value; i++) order.push('def', 'pro')
     order.splice(2, 0, 'wit') // le témoin expert passe à la barre après la première manche
-    order.push('judge')
+    order.push('jury', 'judge') // le jury vote à main levée juste avant le verdict
   }
   try {
     for (let i = 0; ; i++) {
@@ -669,8 +691,8 @@ async function trial(replay) {
       if (!msg.text) await whole
       if (role === 'judge') sfxGavel()
       else if (lines.length) {
-        $('obj').textContent = role === 'wit' ? 'TÉMOIN À LA BARRE !' : 'OBJECTION !'
-        role === 'wit' ? sfxWitness() : sfxObjection()
+        $('obj').textContent = { wit: 'TÉMOIN À LA BARRE !', jury: 'LE JURY VOTE !' }[role] || 'OBJECTION !'
+        role === 'wit' || role === 'jury' ? sfxWitness() : sfxObjection()
         $('obj').hidden = false; await wait(900); $('obj').hidden = true
       }
       st.thinking = false
