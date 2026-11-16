@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Greffe du tribunal : tient proces.js à jour pendant l'audience, pour que la salle la suive en direct.
+
+  greffe.py start "<affaire>"                     ouvre un procès et la salle dans le navigateur, la Défense est attendue
+  greffe.py add "<qui>" "<prochain orateur>"      ajoute la réplique lue sur stdin
+  greffe.py add "<qui>"                           dernière réplique : clôt le procès
+  greffe.py end ko                                clôt un procès qui a échoué en route
+"""
+import json, pathlib, sys, time, webbrowser
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]  # racine du dépôt, même quand le skill est installé par lien symbolique
+F = ROOT / 'proces.js'
+PREFIX = 'window.TRIAL = '
+ROLES = ('Défense', 'Accusation', 'Juge')
+
+
+def load():
+    return json.loads(F.read_text(encoding='utf-8')[len(PREFIX):])
+
+
+def save(trial):
+    tmp = F.with_suffix('.tmp')  # écriture atomique : la page relit le fichier toutes les 1,5 s
+    tmp.write_text(PREFIX + json.dumps(trial, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    tmp.replace(F)
+
+
+cmd, args = sys.argv[1], sys.argv[2:]
+if cmd == 'start':
+    save({'t': int(time.time() * 1000), 'q': args[0], 'done': False, 'next': ROLES[0], 'log': []})
+    webbrowser.open((ROOT / 'index.html').as_uri())
+elif cmd == 'add':
+    who, nxt = args[0], (args[1] if len(args) > 1 else '')
+    text = sys.stdin.read().strip()
+    assert who.startswith(ROLES), f'« {who} » doit commencer par {ROLES}'
+    assert not nxt or nxt in ROLES, f'prochain orateur inconnu : {nxt}'
+    assert text, 'réplique vide sur stdin'
+    trial = load()
+    trial['log'].append({'who': who, 'text': text})
+    if nxt:
+        trial['next'] = nxt
+    else:
+        trial.pop('next', None)
+        trial['done'] = True
+    save(trial)
+elif cmd == 'end':
+    trial = load()
+    trial.pop('next', None)
+    trial['done'] = args[:1] != ['ko']
+    save(trial)
+else:
+    sys.exit(__doc__)

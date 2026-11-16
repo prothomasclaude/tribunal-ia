@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tribunal des IA</title>
+<style>
+  :root { color-scheme: dark; scrollbar-color: #6d5c85 #000; --bg: #17121f; --panel: #241c30; --line: #6d5c85; --ink: #eee; --dim: #a79bbd; --gold: #ffd84a; --pro: #ef6a62; --def: #6f9bf5; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  main { max-width: 1240px; margin: auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  #affaire { flex: 1 1 260px; margin: 0; color: var(--gold); overflow-wrap: anywhere; }
+  .tools { display: flex; gap: 14px; align-items: center; }
+  .chk { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+
+  /* La salle à gauche, le procès-verbal à droite ; empilés sur petit écran */
+  .court { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+  #stage { position: relative; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; border: 4px solid var(--ink); box-sizing: border-box; }
+  #obj { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(28px, 6vw, 72px); font-weight: 900;
+         color: #ff3b3b; text-shadow: 4px 4px 0 #fff, 8px 8px 0 #000; animation: shake .1s infinite; }
+  #obj[hidden] { display: none; }
+  @keyframes shake { 50% { transform: translate(4px, -4px) rotate(-2deg); } }
+  @media (prefers-reduced-motion: reduce) { #obj { animation: none; } }
+  #hint { width: 100%; border-width: 0 4px; border-color: var(--ink); }
+  #box { border: 4px solid var(--ink); border-top: 0; background: #000; padding: 10px 14px; height: 9em; overflow: auto; cursor: pointer; } /* hauteur fixe : le texte défile, le procès-verbal garde tout */
+  #box p { margin: 4px 0 0; white-space: pre-wrap; }
+  #who { color: var(--gold); }
+
+  .pv { position: relative; border: 4px solid var(--ink); background: #000; min-height: 260px; }
+  .pv > div { position: absolute; inset: 0; display: flex; flex-direction: column; } /* suit la hauteur de la salle au lieu de l'étirer */
+  .pv h2 { margin: 0; padding: 8px 12px; border-bottom: 2px solid var(--line); }
+  #log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 12px; }
+  #log:empty::before { content: "Les prises de parole s'afficheront ici au fil de l'audience."; color: var(--dim); }
+  #log, #hist ol { list-style: none; }
+  #hist ol { padding: 0; margin: 10px 0; }
+  #log li, #hist li { margin-bottom: 12px; padding-left: 10px; border-left: 4px solid var(--line); white-space: pre-wrap; }
+  #log li strong, #hist li strong { display: block; }
+  .l-pro { border-color: var(--pro) !important; } .l-pro strong { color: var(--pro); }
+  .l-def { border-color: var(--def) !important; } .l-def strong { color: var(--def); }
+  .l-judge { border-color: var(--gold) !important; } .l-judge strong { color: var(--gold); }
+
+  .below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 28px; }
+  form { display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  label { display: grid; gap: 2px; font-size: 12px; }
+  input, textarea, button { font: inherit; padding: 6px; background: var(--panel); color: var(--ink); border: 2px solid var(--line); min-width: 0; }
+  button { background: var(--gold); color: #000; border-color: #000; font-weight: bold; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  summary { cursor: pointer; padding: 4px 0; }
+  details { border-bottom: 1px solid var(--panel); }
+  details[open] { padding-bottom: 12px; }
+
+  @media (max-width: 900px) {
+    .court, .below { grid-template-columns: minmax(0, 1fr); }
+    .pv { min-height: 0; } .pv > div { position: static; } #log { max-height: 50vh; }
+  }
+</style>
+<main>
+  <header>
+    <h1>⚖ Tribunal des IA</h1>
+    <p id="affaire">Aucune affaire en cours</p>
+    <div class="tools">
+      <label class="chk"><input id="snd" type="checkbox" checked> Son</label>
+      <label class="chk"><input id="mus" type="checkbox" checked> Musique</label>
+      <button id="stop" type="button" hidden>Interrompre</button>
+    </div>
+  </header>
+
+  <div class="court">
+    <section aria-label="Salle d'audience">
+      <div id="stage">
+        <canvas id="scene" width="240" height="120" aria-hidden="true"></canvas>
+        <div id="obj" hidden>OBJECTION !</div>
+      </div>
+      <button id="hint" type="button" hidden>🔇 Cliquez pour activer le son</button>
+      <div id="box" title="Cliquer pour afficher tout le texte">
+        <strong id="who">Greffier</strong>
+        <p id="line">La cour attend votre demande.</p>
+      </div>
+    </section>
+    <aside class="pv" aria-label="Procès-verbal"><div>
+      <h2>Procès-verbal</h2>
+      <ol id="log" aria-live="polite"></ol>
+    </div></aside>
+  </div>
+
+  <div class="below">
+    <section>
+      <h2>Ouvrir un procès ici</h2>
+      <form id="f">
+        <label>Votre demande
+          <textarea id="case" rows="3" required placeholder="J'aimerais faire une application qui..."></textarea>
+        </label>
+        <div class="row">
+          <label>Accusation (modèle) <input id="m-pro" list="models"></label>
+          <label>Juge (modèle) <input id="m-judge" list="models"></label>
+          <label>Défense (modèle) <input id="m-def" list="models"></label>
+        </div>
+        <div class="row">
+          <label style="grid-column: span 2">Clé OpenRouter (vide = mode démo)
+            <input id="key" type="password" autocomplete="off" placeholder="sk-or-...">
+          </label>
+          <label>Manches <input id="rounds" type="number" min="1" max="5" value="2"></label>
+        </div>
+        <button id="go">Ouvrir l'audience</button>
+      </form>
+      <datalist id="models"></datalist>
+    </section>
+    <section>
+      <h2>Historique des procès</h2>
+      <div id="hist"></div>
+      <button id="clear" type="button" style="margin-top:12px">Vider l'historique</button>
+    </section>
+  </div>
+</main>
+<script src="proces.js"></script><!-- facultatif : procès préparé par /objection -->
+<script>
+const $ = id => document.getElementById(id)
+const COMMON = "Tu joues dans un tribunal comique où des IA débattent de la meilleure façon de réaliser la demande d'un utilisateur. Réponds en français, sans markdown, ton théâtral de prétoire mais arguments techniques réels et concrets. "
+const ROLES = {
+  def: { name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
+  pro: { name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
+  judge: { name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis énonce la solution retenue en étapes concrètes. 150 mots maximum." },
+}
+const roleOf = who => Object.keys(ROLES).find(r => who.startsWith(ROLES[r].name))
+const DEMO = {
+  def: ["Votre Honneur, ma cliente est une simple page HTML. Pas de build, pas de serveur, pas de larmes. Elle fait le travail et rentre dîner à l'heure.",
+        "Calomnie ! Un framework pour trois boutons, c'est louer un stade pour jouer aux billes. Ma cliente tient en un fichier et le jury peut la lire en entier."],
+  pro: ["Une page HTML ! Et demain, quand il faudra un état partagé, des tests, une équipe ? Je réclame un vrai framework, avec composants et typage.",
+        "La Défense confond simplicité et négligence. Sans structure, chaque ajout sera un crime de plus au dossier. Je maintiens mes réquisitions."],
+  judge: ["Silence ! La cour donne raison à la Défense : le besoin est petit, la solution doit l'être aussi. Solution retenue : 1) un seul fichier HTML, 2) on mesure, 3) on ne passe au framework que si la douleur est prouvée. L'audience est levée. (Mode démo : ajoutez une clé OpenRouter pour un vrai procès.)"],
+}
+
+// --- Scène pixel (240x120, agrandie en CSS) ---
+const c = $('scene').getContext('2d')
+const st = { speaker: null, thinking: false, gavel: -1e9, stir: -1e9 }
+const P = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h) }
+// Sprites 16x20 : une lettre = un pixel, '.' = transparent. Couleurs communes dans PAL, propres au personnage dans pal.
+const PAL = { k: '#1a1420', s: '#f1c9a5', d: '#d9a07c', w: '#f4f4f4', g: '#c2c2d1', e: '#222222', m: '#7a2b2b' }
+const SUIT = [
+  '.....kssssk.....',
+  '..kkrrwttwrrkk..',
+  '.krrrrwttwrrrrk.',
+  'krrrrrRttRrrrrrk',
+  'krrrrrrttrrrrrrk',
+  'krRrrrrttrrrrRrk',
+  'krRrrrrrrrrrrRrk',
+  'krRrrrrrrrrrrRrk',
+]
+const SPRITES = {
+  judge: { pal: { r: '#2b2636', R: '#15121a' }, rows: [
+    '....kkkkkkkk....',
+    '..kkwwwwwwwwkk..',
+    '.kwwgwwwwwwgwwk.',
+    '.kwwwwwwwwwwwwk.',
+    '.kwgwsssssswgwk.',
+    '.kwwsssssssswwk.',
+    '.kgwskksskkswgk.',
+    '.kwwsesssseswwk.',
+    '.kwgssssssssgwk.',
+    '.kwwsssddssswwk.',
+    '.kgwsssmmssswgk.',
+    '.kwwkddssddkwwk.',
+    '.kgwk.kssk.kwgk.',
+    '..kkkrwwwwrkkk..',
+    '.krrrrwwwwrrrrk.',
+    'krrrrrRwwRrrrrrk',
+    'krrrrrrwwrrrrrrk',
+    'krRrrrrrrrrrrRrk',
+    'krRrrrrrrrrrrRrk',
+    'krRrrrrrrrrrrRrk',
+  ] },
+  pro: { arm: 1, pal: { h: '#2a1a10', H: '#5a3a26', r: '#a32a2a', R: '#7d1f1f', t: '#1b1b1b' }, rows: [
+    '....kkkkkkkk....',
+    '...khhhhhhhhk...',
+    '..khhHHHhhhhhk..',
+    '..khhhhhhhhhhk..',
+    '..khsssssssshk..',
+    '..kssssssssssk..',
+    '..kskkssskkssk..',
+    '..kswessswessk..',
+    '..kssssssssssk..',
+    '..ksssssdssssk..',
+    '..kssssmmssssk..',
+    '...kddssssddk...',
+    ...SUIT,
+  ] },
+  def: { arm: -1, flip: true, pal: { h: '#d9a441', H: '#f7dc86', r: '#2a4fa3', R: '#1f3b7d', t: '#c0392b' }, rows: [
+    '...kk.kkk.kk....',
+    '..khhkhhhkhhk...',
+    '..khHHhhHhhhhk..',
+    '..khhhhhhhhhhk..',
+    '..khhsssssshhk..',
+    '..khsssssssshk..',
+    '..ksddsssddssk..',
+    '..kswessswessk..',
+    '..kssssssssssk..',
+    '..ksssssdssssk..',
+    '..ksssmmmmsssk..',
+    '...kddssssddk...',
+    ...SUIT,
+  ] },
+}
+for (const r in SPRITES) console.assert(SPRITES[r].rows.length === 20 && SPRITES[r].rows.every(l => l.length === 16), 'sprite mal formé : ' + r)
+
+// (x, y) = centre du cou ; la tête occupe les 12 lignes au-dessus
+function person(role, x, y, t) {
+  const sp = SPRITES[role], active = st.speaker === role, talking = active && !st.thinking
+  if (talking) y += Math.round(Math.sin(t / 120))
+  sp.rows.forEach((row, j) => {
+    for (let i = 0; i < 16; i++) {
+      const ch = row[sp.flip ? 15 - i : i]
+      if (ch !== '.') P(x - 8 + i, y - 12 + j, 1, 1, sp.pal[ch] || PAL[ch])
+    }
+  })
+  if (((t / 150 | 0) + x) % 20 === 0) P(x - 4, y - 5, 8, 1, PAL.d) // clignement
+  if (talking && (t / 150 | 0) % 2) P(x - 1, y - 2, 2, 2, '#4a1515')
+  if (talking && sp.arm) { P(x + sp.arm * 8, y + 3, sp.arm * 5, 3, sp.pal.r); P(x + sp.arm * 13, y + 3, sp.arm * 3, 2, PAL.s) } // bras accusateur
+  if (talking) P(x - 1, y - 16, 3, 2, '#ffd84a')
+  if (active && st.thinking) for (let k = 0; k < (t / 300 | 0) % 4; k++) P(x - 4 + k * 3, y - 16, 2, 2, '#fff')
+}
+// Public vu de dos au premier plan ; il s'agite aux objections et au verdict
+const HAIR = ['#2a1a10', '#d9a441', '#8b3a1e', '#c2c2d1', '#1b1b1b', '#5a3a26']
+const COAT = ['#4a5a7a', '#6b3b5a', '#3f6b4a', '#7a6a3a']
+function crowd(t) {
+  const stir = t - st.stir < 1200
+  for (let i = 0; i < 13; i++) {
+    const x = 6 + i * 18 + (i % 2) * 3
+    const y = 108 + i * 7 % 3 + (stir ? Math.round(Math.sin(t / 60 + i * 2)) * 2 : Math.sin(t / 900 + i * 5) > .9 ? -1 : 0)
+    P(x - 1, y - 1, 10, 9, PAL.k); P(x, y, 8, 7, HAIR[i % 6]); P(x + 1, y + 1, 3, 1, '#ffffff33')
+    P(x - 4, y + 7, 16, 12, PAL.k); P(x - 3, y + 8, 14, 12, COAT[i % 4])
+  }
+}
+function draw(t) {
+  P(0, 0, 240, 120, '#3b2a4a')
+  for (let x = 0; x < 240; x += 24) P(x, 0, 1, 80, '#2e2039')
+  P(0, 80, 240, 40, '#6b4a35')
+  person('judge', 120, 31, t)
+  P(84, 40, 72, 42, '#8a5a32'); P(84, 40, 4, 42, '#754a28'); P(152, 40, 4, 42, '#754a28') // pupitre du juge, jusqu'à l'estrade
+  P(80, 38, 80, 4, '#a9713f'); P(112, 50, 16, 12, '#ffd84a')
+  P(70, 82, 100, 6, '#7d5540'); P(70, 82, 100, 1, '#a9713f') // estrade posée sur le plancher
+  const down = t - st.gavel < 900 && (t / 150 | 0) % 2 // le marteau frappe au verdict
+  P(138, down ? 34 : 26, 9, 4, '#5a3a1e'); P(141, down ? 30 : 30, 2, 8, '#c9a26b')
+  person('pro', 50, 76, t)
+  P(30, 86, 40, 20, '#8a5a32'); P(28, 84, 44, 3, '#a9713f')
+  person('def', 190, 76, t)
+  P(170, 86, 40, 20, '#8a5a32'); P(168, 84, 44, 3, '#a9713f')
+  crowd(t)
+  requestAnimationFrame(draw)
+}
+requestAnimationFrame(draw)
+
+// --- Modèles : liste publique OpenRouter, pas d'identifiants en dur qui périment ---
+for (const r in ROLES) {
+  const el = $('m-' + r)
+  el.value = localStorage['m-' + r] || ''
+  el.onchange = () => localStorage['m-' + r] = el.value
+}
+$('key').value = localStorage.key_or || ''
+$('key').onchange = () => localStorage.key_or = $('key').value.trim()
+fetch('https://openrouter.ai/api/v1/models').then(r => r.json()).then(({ data }) => {
+  $('models').append(...data.map(m => new Option(m.name, m.id)))
+  for (const r in ROLES) $('m-' + r).value ||= data.find(m => m.id.startsWith(ROLES[r].prefix))?.id || ''
+}).catch(() => {}) // hors ligne : on tape l'identifiant à la main
+
+// --- Débat ---
+// --- Son : synthétisé avec WebAudio, aucun fichier ---
+let ac
+$('snd').checked = localStorage.snd !== '0'
+$('snd').onchange = () => localStorage.snd = +$('snd').checked
+const mute = () => !ac || ac.state !== 'running' || !$('snd').checked // suspendu tant que l'utilisateur n'a pas cliqué : ne rien programmer, sinon tout sortirait d'un coup à la reprise
+function beep(f, dur, type = 'square', vol = .05, at = 0) {
+  if (mute()) return
+  const o = ac.createOscillator(), g = ac.createGain(), t0 = ac.currentTime + at
+  o.type = type; o.frequency.value = f
+  g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(.001, t0 + dur)
+  o.connect(g).connect(ac.destination); o.start(t0); o.stop(t0 + dur)
+}
+function noise(dur, vol, freq, at = 0) { // souffle filtré : grave = coup de marteau, médium = brouhaha du public
+  if (mute()) return
+  const buf = ac.createBuffer(1, ac.sampleRate * dur | 0, ac.sampleRate), d = buf.getChannelData(0)
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length)
+  const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain()
+  src.buffer = buf; f.type = 'bandpass'; f.frequency.value = freq; g.gain.value = vol
+  src.connect(f).connect(g).connect(ac.destination); src.start(ac.currentTime + at)
+}
+// Musique : un thème de 32 pas par rôle (0 = silence), choisi selon qui a la parole. « Son » décoché coupe aussi la musique.
+// shortcut: cadencée par setInterval, peut flotter si l'onglet rame ; passer à un ordonnancement sur ac.currentTime si ça s'entend
+const THEMES = {
+  pro: { wave: 'sawtooth', hat: 4, // la mineur, menaçant, sensible sol dièse
+    bass: [110, 0, 110, 0, 110, 0, 131, 0, 147, 0, 147, 0, 165, 0, 165, 0, 87, 0, 87, 0, 87, 0, 98, 0, 110, 0, 110, 0, 165, 0, 165, 0],
+    lead: [220, 0, 0, 262, 0, 0, 294, 0, 330, 0, 294, 0, 262, 0, 0, 0, 175, 0, 0, 220, 0, 0, 262, 0, 247, 0, 220, 0, 208, 0, 0, 0] },
+  def: { wave: 'square', hat: 2, // do majeur, vif et optimiste
+    bass: [131, 0, 131, 0, 131, 0, 165, 0, 175, 0, 175, 0, 196, 0, 196, 0, 110, 0, 110, 0, 110, 0, 131, 0, 175, 0, 196, 0, 131, 0, 131, 0],
+    lead: [523, 0, 659, 0, 784, 0, 659, 0, 698, 0, 880, 0, 784, 0, 0, 0, 659, 0, 523, 0, 659, 0, 784, 0, 698, 0, 587, 0, 523, 0, 0, 0] },
+  judge: { wave: 'triangle', hat: 0, // suspense : pédale de mi qui pulse, notes rares, pas de charleston
+    bass: Array.from({ length: 32 }, (_, i) => i % 2 ? 0 : i < 24 ? 82 : 87),
+    lead: Array.from({ length: 32 }, (_, i) => ({ 0: 659, 8: 622, 16: 659, 24: 698 })[i] || 0) },
+}
+$('mus').checked = localStorage.mus !== '0'
+$('mus').onchange = () => localStorage.mus = +$('mus').checked
+let musicId
+function music(on) {
+  clearInterval(musicId)
+  let step = 0, last
+  if (on) musicId = setInterval(() => {
+    if (st.speaker !== last) { last = st.speaker; step = 0 } // chaque prise de parole reprend son thème au début
+    const i = step++ % 32, th = THEMES[st.speaker] || THEMES.pro
+    if (!$('mus').checked) return
+    if (th.bass[i]) beep(th.bass[i], .16, 'triangle', .07)
+    if (th.lead[i]) beep(th.lead[i], .2, th.wave, th.wave === 'triangle' ? .05 : .02)
+    if (th.hat && i % th.hat === th.hat - 1) noise(.03, .06, 6000) // charleston
+  }, 180)
+}
+function sfxObjection() {
+  st.stir = performance.now()
+  beep(520, .1, 'sawtooth', .12); beep(780, .4, 'sawtooth', .12, .1); noise(1, .3, 700)
+}
+function sfxGavel() {
+  st.gavel = st.stir = performance.now()
+  music(false) // silence dramatique pour le verdict
+  for (let k = 0; k < 3; k++) { noise(.12, .9, 180, k * .3); beep(80, .12, 'square', .2, k * .3) }
+  noise(1.2, .25, 600, .9)
+}
+
+const wait = ms => new Promise(r => setTimeout(r, ms))
+let skip = false
+$('box').onclick = () => skip = true
+let ctl // AbortController du procès en cours
+$('stop').onclick = () => { ctl?.abort(); skip = true } // coupe la requête en cours et vide la machine à écrire
+
+// Lit un flux SSE de chat completions, appelle onDelta à chaque morceau de texte, renvoie le texte complet
+async function readSSE(r, onDelta) {
+  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buf = '', text = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    const parts = (buf + value).split('\n')
+    buf = parts.pop() // ligne incomplète, finie au prochain morceau
+    for (const l of parts) {
+      if (!l.startsWith('data: ') || l.startsWith('data: [DONE]')) continue // ignore aussi les commentaires keep-alive
+      const j = JSON.parse(l.slice(6))
+      if (j.error) throw new Error(j.error.message)
+      let d = j.choices?.[0]?.delta?.content
+      if (d && !text) d = d.trimStart()
+      if (d) { text += d; onDelta(d) }
+    }
+  }
+  return text
+}
+
+// canned = texte déjà connu (démo ou rediffusion) : il suit le même chemin que le vrai flux, mot par mot
+async function ask(role, transcript, onDelta, canned) {
+  ctl.signal.throwIfAborted()
+  if (canned) {
+    await wait(900)
+    for (const w of canned.match(/\S+\s*/g) || []) { ctl.signal.throwIfAborted(); onDelta(w); await wait(40) }
+    return canned
+  }
+  const key = $('key').value.trim()
+  const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST', signal: ctl.signal,
+    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: $('m-' + role).value, max_tokens: 1500, stream: true,
+      messages: [
+        { role: 'system', content: COMMON + ROLES[role].sys },
+        { role: 'user', content: `Demande de l'utilisateur : ${$('case').value}\n\nDébats jusqu'ici :\n${transcript || "(aucun, tu ouvres l'audience)"}\n\nÀ toi, ${ROLES[role].name}.` },
+      ],
+    }),
+  })
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error?.message || 'HTTP ' + r.status)
+  const text = (await readSSE(r, onDelta)).trim()
+  if (!text) throw new Error('réponse vide')
+  return text
+}
+
+// msg = { text, done } rempli au fil du flux (ou une simple chaîne) ; la machine à écrire suit ce qui est arrivé
+function show(who, msg, pitch = 260) {
+  if (typeof msg === 'string') msg = { text: msg, done: true }
+  $('who').textContent = who
+  skip = false
+  return new Promise(res => {
+    let i = 0
+    const id = setInterval(() => {
+      const before = i
+      i = skip ? msg.text.length : Math.min(i + 1, msg.text.length)
+      $('line').textContent = msg.text.slice(0, i)
+      $('box').scrollTop = $('box').scrollHeight
+      if (!skip && i > before && i % 3 === 0 && msg.text[i] !== ' ') beep(pitch, .03, 'square', .03) // voix : un blip par rôle
+      if (msg.done && i >= msg.text.length) { clearInterval(id); res() }
+    }, 18)
+  })
+}
+
+function logLine(ol, who, text) {
+  const li = document.createElement('li'), b = document.createElement('strong')
+  b.textContent = who
+  li.className = 'l-' + roleOf(who)
+  li.append(b, text) // texte brut : la sortie des modèles n'est jamais interprétée en HTML
+  ol.append(li)
+}
+
+// --- Historique : les 30 derniers procès, dans le localStorage de ce navigateur ---
+const trials = () => { try { return JSON.parse(localStorage.trials) || [] } catch { return [] } }
+function renderHistory() {
+  const all = trials()
+  $('clear').hidden = !all.length
+  $('hist').replaceChildren(...all.length ? all.map(tr => {
+    const d = document.createElement('details'), sum = document.createElement('summary'), ol = document.createElement('ol')
+    sum.textContent = `${new Date(tr.t).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })} : ${tr.q.slice(0, 80)}${tr.done ? '' : ' (interrompu)'}`
+    tr.log.forEach(l => logLine(ol, l.who, l.text))
+    const again = document.createElement('button')
+    again.type = 'button'; again.className = 'replay'; again.textContent = 'Rejouer dans la salle'
+    again.onclick = () => trial(tr)
+    d.append(sum, tr.q, ol, again)
+    return d
+  }) : ['Aucun procès pour l\'instant.'])
+}
+$('clear').onclick = () => { if (confirm('Effacer tout l\'historique des procès ?')) { delete localStorage.trials; renderHistory() } }
+renderHistory()
+
+function busy(on) {
+  $('go').disabled = on; $('stop').hidden = !on
+  document.querySelectorAll('.replay').forEach(b => b.disabled = on)
+}
+
+// Recharge proces.js (une balise script fonctionne aussi en file://, contrairement à fetch)
+function reload() {
+  return new Promise(r => {
+    const el = document.createElement('script')
+    el.src = 'proces.js?' + Date.now()
+    el.onload = el.onerror = () => { el.remove(); r() }
+    document.head.append(el)
+  })
+}
+const clean = tr => ({ ...tr, next: undefined }) // next = orateur attendu, n'a de sens que pendant l'audience en direct
+
+// replay = un procès à diffuser tel quel (historique, ou audience en direct de /objection tant que replay.next est posé).
+// Aucun appel aux modèles dans ce cas.
+async function trial(replay) {
+  if ($('go').disabled) return
+  busy(true)
+  ac ||= new AudioContext(); ac.resume() // ne démarre vraiment qu'après un clic, exigence des navigateurs
+  setTimeout(() => $('hint').hidden = ac.state === 'running', 300)
+  music(true)
+  ctl = new AbortController()
+  $('log').replaceChildren()
+  const lines = [], order = [], saved = [], q = $('case').value
+  const live = $('key').value.trim()
+  let done = false
+  $('affaire').textContent = `${replay ? replay.next ? 'En direct' : 'Rediffusion' : 'Audience'} : ${replay ? replay.q : q}`
+  if (replay) $('stage').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  else {
+    for (let i = 0; i < +$('rounds').value; i++) order.push('def', 'pro')
+    order.push('judge')
+  }
+  try {
+    for (let i = 0; ; i++) {
+      let role, who, canned
+      if (replay) {
+        while (replay.next && !replay.log[i]) { // direct : la réplique suivante n'est pas encore écrite, l'orateur réfléchit
+          st.speaker = roleOf(replay.next); st.thinking = true
+          $('who').textContent = replay.next; $('line').textContent = '… prépare sa prise de parole'
+          await wait(1500)
+          ctl.signal.throwIfAborted()
+          await reload()
+          if (window.TRIAL?.t === replay.t) replay = TRIAL
+        }
+        const l = replay.log[i]
+        if (!l) break
+        role = roleOf(l.who); who = l.who; canned = l.text
+        if (!role) continue
+      } else {
+        if (i >= order.length) break
+        role = order[i]
+        who = `${ROLES[role].name} (${live ? $('m-' + role).value : 'démo'})`
+        canned = live ? null : DEMO[role][(i >> 1) % DEMO[role].length]
+      }
+      st.speaker = role; st.thinking = true
+      $('who').textContent = who; $('line').textContent = '…'
+      const msg = { text: '', done: false }
+      let first
+      const started = new Promise(r => first = r)
+      const whole = ask(role, lines.join('\n\n'), d => { msg.text += d; first() }, canned).finally(() => { msg.done = true; first() })
+      whole.catch(() => {}) // l'erreur est relevée par le await plus bas
+      await started // premier mot reçu, ou échec
+      if (!msg.text) await whole
+      if (role === 'judge') sfxGavel()
+      else if (lines.length) { sfxObjection(); $('obj').hidden = false; await wait(900); $('obj').hidden = true }
+      st.thinking = false
+      await show(who, msg, ROLES[role].pitch)
+      const text = await whole
+      lines.push(`${ROLES[role].name} : ${text}`)
+      saved.push({ who, text })
+      logLine($('log'), who, text)
+      $('log').scrollTop = $('log').scrollHeight
+      st.thinking = true // bouche fermée pendant qu'on lit
+      await wait(1500)
+    }
+    done = true
+  } catch (err) {
+    st.speaker = null
+    await show('Greffier', ctl.signal.aborted ? 'Audience interrompue à votre demande.' : 'Audience suspendue : ' + err.message)
+  }
+  st.speaker = null; st.thinking = false
+  music(false)
+  if (replay) localStorage.trials = JSON.stringify(trials().map(x => x.t === replay.t ? clean(replay) : x)) // un direct s'est allongé depuis son archivage
+  else if (saved.length) localStorage.trials = JSON.stringify([{ t: Date.now(), q, done, log: saved }, ...trials()].slice(0, 30)) // rien à archiver avant la première réplique
+  renderHistory()
+  if (replay) dismissed = replay.t
+  $('hint').hidden = true
+  busy(false)
+}
+document.addEventListener('click', () => ac?.resume().then(() => $('hint').hidden = true))
+$('f').onsubmit = e => { e.preventDefault(); trial() }
+
+// Procès préparé par la commande /objection de Claude Code : proces.js pose window.TRIAL à côté de cette page.
+// La salle le lance toute seule, sans rien redemander. Tant que TRIAL.next est posé, l'audience est en cours côté
+// Claude Code et la salle la suit en direct. Un procès déjà vu (archivé, ou quitté dans cette page) n'est pas relancé.
+let dismissed
+function checkDocket() {
+  const T = window.TRIAL
+  if (!T || !Array.isArray(T.log) || $('go').disabled || T.t === dismissed) return
+  const known = trials().some(x => x.t === T.t)
+  if (known && !T.next) return
+  if (!known) { localStorage.trials = JSON.stringify([clean(T), ...trials()].slice(0, 30)); renderHistory() }
+  $('case').value = T.q
+  trial(T)
+}
+checkDocket()
+setInterval(() => { if (!$('go').disabled) reload().then(checkDocket) }, 3000) // page restée ouverte : repère le prochain /objection
+</script>
+</html>
