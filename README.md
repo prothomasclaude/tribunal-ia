@@ -55,6 +55,7 @@ Un procès lance six prises de parole d'agents (deux manches, un témoin, puis l
 ## Dans la salle
 
 - **Procès-verbal** à droite de la scène, une couleur par rôle.
+- **Fiches cliquables** : un clic sur un personnage ouvre sa fiche (rôle, modèle, prises de parole, temps de travail), un clic sur le dossier posé sur le pupitre du Juge ouvre l'affaire et ses pièces à conviction. Les boutons « Fiches » sous la scène font la même chose au clavier.
 - **Décision de la cour** : les étapes numérotées du verdict deviennent une liste à cocher, mémorisée par procès, avec un bouton pour la copier en Markdown.
 - **Historique** des 30 derniers procès, avec un bouton pour les rejouer dans la salle.
 - **Son et musique** synthétisés dans le navigateur, avec un thème par orateur. Deux cases permettent de les couper.

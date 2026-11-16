@@ -42,6 +42,16 @@
   .l-wit { border-color: var(--wit) !important; } .l-wit strong { color: var(--wit); }
   .l-judge { border-color: var(--gold) !important; } .l-judge strong { color: var(--gold); }
 
+  .fiches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; color: var(--dim); }
+  .ghost { background: var(--panel); color: var(--ink); border-color: var(--line); font-weight: normal; font-size: 13px; padding: 4px 10px; }
+  dialog { background: var(--bg); color: var(--ink); border: 4px solid var(--ink); padding: 18px 20px; width: min(640px, calc(100vw - 32px)); max-height: 85vh; }
+  dialog::backdrop { background: #000a; }
+  dialog h2 { font-size: 18px; color: var(--gold); }
+  dialog ol, dialog ul { padding: 0; margin: 12px 0; list-style: none; }
+  dialog li { margin-bottom: 12px; padding-left: 10px; border-left: 4px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+  dialog li strong { display: block; }
+  dialog a { color: var(--def); }
+  .stat { display: block; color: var(--dim); font-size: 12px; margin-top: 2px; }
   #decision { margin-top: 16px; border: 4px solid var(--gold); background: #000; padding: 12px 16px; }
   #steps { list-style: none; padding: 0; margin: 0 0 12px; }
   #steps label { display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; font-size: 15px; cursor: pointer; }
@@ -86,6 +96,14 @@
         <strong id="who">Greffier</strong>
         <p id="line">La cour attend votre demande.</p>
       </div>
+      <div class="fiches" role="group" aria-label="Fiches du procès">
+        Fiches :
+        <button type="button" class="ghost" data-fiche="pro">Accusation</button>
+        <button type="button" class="ghost" data-fiche="judge">Juge</button>
+        <button type="button" class="ghost" data-fiche="def">Défense</button>
+        <button type="button" class="ghost" data-fiche="wit">Témoin</button>
+        <button type="button" class="ghost" data-fiche="dossier">Dossier et pièces</button>
+      </div>
     </section>
     <aside class="pv" aria-label="Procès-verbal"><div>
       <h2>Procès-verbal</h2>
@@ -98,6 +116,11 @@
     <ol id="steps"></ol>
     <button id="copy" type="button">Copier la décision</button><span id="copied" role="status"></span>
   </section>
+
+  <dialog id="fiche" aria-labelledby="fiche-h">
+    <div id="fiche-body"></div>
+    <form method="dialog"><button>Fermer</button></form>
+  </dialog>
 
   <div class="below">
     <section>
@@ -133,11 +156,11 @@
 const $ = id => document.getElementById(id)
 const COMMON = "Tu joues dans un tribunal comique où des IA débattent de la meilleure façon de réaliser la demande d'un utilisateur. Réponds en français, sans markdown, ton théâtral de prétoire mais arguments techniques réels et concrets. "
 const ROLES = {
-  def: { name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
-  pro: { name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
-  judge: { name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
+  def: { bio: "Avocat de la Défense. Propose une solution ou défend la pièce jugée, et tient sa position.", name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
+  pro: { bio: "Procureur. Cherche les failles et plaide pour une alternative précise.", name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
+  judge: { bio: "Juge. Écoute les débats, puis rend le verdict et la décision à appliquer.", name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
   // field : le témoin n'a pas de champ modèle à lui, il emprunte celui du Juge
-  wit: { name: 'Témoin', field: 'judge', pitch: 260, sys: "Tu es un témoin expert neutre, appelé à la barre entre deux manches. Choisis la spécialité la plus utile à l'affaire (sécurité, coût, expérience utilisateur, performance, maintenance) et annonce-la en commençant. Éclaire le point le plus disputé par des faits vérifiables et dis ce qui est exact ou faux dans ce que chaque partie a affirmé. Tu ne désignes pas de gagnant. 70 mots maximum." },
+  wit: { bio: "Témoin expert. Appelé à la barre après la première manche pour établir les faits, sans prendre parti.", name: 'Témoin', field: 'judge', pitch: 260, sys: "Tu es un témoin expert neutre, appelé à la barre entre deux manches. Choisis la spécialité la plus utile à l'affaire (sécurité, coût, expérience utilisateur, performance, maintenance) et annonce-la en commençant. Éclaire le point le plus disputé par des faits vérifiables et dis ce qui est exact ou faux dans ce que chaque partie a affirmé. Tu ne désignes pas de gagnant. 70 mots maximum." },
 }
 const FIELDS = ['pro', 'judge', 'def'] // les rôles qui ont un champ modèle dans le formulaire
 const roleOf = who => Object.keys(ROLES).find(r => who.startsWith(ROLES[r].name))
@@ -271,7 +294,8 @@ function draw(t) {
   P(0, 80, 240, 40, '#6b4a35')
   person('judge', 120, 31, t)
   P(84, 40, 72, 42, '#8a5a32'); P(84, 40, 4, 42, '#754a28'); P(152, 40, 4, 42, '#754a28') // pupitre du juge, jusqu'à l'estrade
-  P(80, 38, 80, 4, '#a9713f'); P(112, 50, 16, 12, '#ffd84a')
+  P(80, 38, 80, 4, '#a9713f')
+  P(112, 48, 6, 2, '#e0b93a'); P(112, 50, 16, 11, '#ffd84a'); P(114, 53, 12, 1, '#b8902a'); P(114, 56, 9, 1, '#b8902a') // le dossier de l'affaire, cliquable
   P(70, 82, 100, 6, '#7d5540'); P(70, 82, 100, 1, '#a9713f') // estrade posée sur le plancher
   const down = t - st.gavel < 900 && (t / 150 | 0) % 2 // le marteau frappe au verdict
   P(138, down ? 34 : 26, 9, 4, '#5a3a1e'); P(141, down ? 30 : 30, 2, 8, '#c9a26b')
@@ -462,6 +486,55 @@ function renderHistory() {
 $('clear').onclick = () => { if (confirm('Effacer tout l\'historique des procès ?')) { delete localStorage.trials; renderHistory() } }
 renderHistory()
 
+// --- Fiches : un clic sur un personnage ou sur le dossier du pupitre ouvre sa fiche (les boutons « Fiches » font pareil au clavier) ---
+let current = { q: '', log: [], pieces: [] } // le procès affiché dans la salle
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e }
+const fmtMs = ms => ms >= 60000 ? `${Math.floor(ms / 60000)} min ${Math.round(ms % 60000 / 1000)} s` : (ms / 1000).toFixed(1).replace('.', ',') + ' s'
+const statOf = l => [l.ms && fmtMs(l.ms), l.tools && `${l.tools} action${l.tools > 1 ? 's' : ''} (lectures, recherches)`].filter(Boolean).join(' · ')
+function speechList(lines) {
+  const ol = el('ol')
+  for (const l of lines) {
+    logLine(ol, l.who, l.text)
+    if (statOf(l)) ol.lastChild.append(el('span', statOf(l), 'stat'))
+  }
+  return ol
+}
+function openFiche(role) {
+  const body = $('fiche-body')
+  if (role === 'dossier') {
+    const ms = current.log.reduce((n, l) => n + (l.ms || 0), 0), ul = el('ul')
+    for (const p of current.pieces) {
+      const [nom, url] = p.split(/=(?=https?:\/\/)/), li = el('li', url ? null : nom)
+      if (url) { const a = el('a', nom); a.href = url; a.target = '_blank'; a.rel = 'noopener'; li.append(a) }
+      ul.append(li)
+    }
+    body.replaceChildren(
+      el('h2', 'Dossier de l\'affaire'), el('p', current.q || 'Aucune affaire en cours.'),
+      el('p', `${current.log.length} prise${current.log.length > 1 ? 's' : ''} de parole${ms ? ', ' + fmtMs(ms) + ' de travail cumulé' : ''}.`, 'stat'),
+      el('h3', 'Pièces à conviction'),
+      current.pieces.length ? ul : el('p', 'Aucune pièce versée : l\'affaire est une simple question.', 'stat'))
+  } else {
+    const mine = current.log.filter(l => roleOf(l.who) === role), ms = mine.reduce((n, l) => n + (l.ms || 0), 0)
+    const models = [...new Set(mine.map(l => l.who.match(/\(([^()]+)\)$/)?.[1]).filter(Boolean))]
+    body.replaceChildren(
+      el('h2', ROLES[role].name), el('p', ROLES[role].bio),
+      el('p', mine.length ? [`${mine.length} prise${mine.length > 1 ? 's' : ''} de parole`, models.length && 'modèle : ' + models.join(', '), ms && fmtMs(ms) + ' de travail'].filter(Boolean).join(' · ')
+                          : 'Aucune prise de parole dans ce procès pour l\'instant.', 'stat'),
+      speechList(mine))
+  }
+  body.firstChild.id = 'fiche-h'
+  $('fiche').showModal()
+}
+for (const b of document.querySelectorAll('[data-fiche]')) b.onclick = () => openFiche(b.dataset.fiche)
+const SPOTS = { wit: [120, 96], judge: [120, 31], pro: [50, 76], def: [190, 76] } // cou de chaque personnage, comme dans draw()
+function spotAt(e) {
+  const k = 240 / c.canvas.clientWidth, x = e.offsetX * k, y = e.offsetY * k
+  if (x >= 111 && x <= 129 && y >= 47 && y <= 62) return 'dossier'
+  return Object.keys(SPOTS).find(r => Math.abs(x - SPOTS[r][0]) <= 11 && y >= SPOTS[r][1] - 15 && y <= SPOTS[r][1] + 9)
+}
+c.canvas.onclick = e => { const spot = spotAt(e); if (spot) openFiche(spot) }
+c.canvas.onmousemove = e => c.canvas.style.cursor = spotAt(e) ? 'pointer' : ''
+
 // --- Décision : les étapes numérotées du verdict deviennent une liste à cocher, mémorisée par procès (clé = date t) ---
 const checks = () => { try { return JSON.parse(localStorage.checks) || {} } catch { return {} } }
 const stepsOf = text => (text || '').match(/^\s*\d+[.)]\s+.+$/gm)?.map(l => l.replace(/^\s*\d+[.)]\s+/, '')) || []
@@ -518,6 +591,7 @@ async function trial(replay) {
   const lines = [], order = [], saved = [], q = replay ? replay.q : $('case').value
   const t = replay ? replay.t : Date.now()
   renderDecision(t)
+  current = { q, log: saved, pieces: replay?.pieces || [] }
   const live = $('key').value.trim()
   let done = false
   $('affaire').textContent = `${replay ? replay.next ? 'En direct' : 'Rediffusion' : 'Audience'} : ${q}`
@@ -529,7 +603,7 @@ async function trial(replay) {
   }
   try {
     for (let i = 0; ; i++) {
-      let role, who, canned
+      let role, who, canned, stats = {}, t0
       if (replay) {
         while (replay.next && !replay.log[i]) { // direct : la réplique suivante n'est pas encore écrite, l'orateur réfléchit
           st.speaker = roleOf(replay.next); st.thinking = true
@@ -541,7 +615,7 @@ async function trial(replay) {
         }
         const l = replay.log[i]
         if (!l) break
-        role = roleOf(l.who); who = l.who; canned = l.text
+        role = roleOf(l.who); who = l.who; canned = l.text; stats = { ms: l.ms, tools: l.tools }
         if (!role) continue
       } else {
         if (i >= order.length) break
@@ -554,6 +628,7 @@ async function trial(replay) {
       const msg = { text: '', done: false }
       let first
       const started = new Promise(r => first = r)
+      t0 = performance.now()
       const whole = ask(role, lines.join('\n\n'), d => { msg.text += d; first() }, canned).finally(() => { msg.done = true; first() })
       whole.catch(() => {}) // l'erreur est relevée par le await plus bas
       await started // premier mot reçu, ou échec
@@ -567,8 +642,9 @@ async function trial(replay) {
       st.thinking = false
       await show(who, msg, ROLES[role].pitch)
       const text = await whole
+      if (!canned) stats = { ms: Math.round(performance.now() - t0) } // vrai appel à un modèle : on chronomètre
       lines.push(`${ROLES[role].name} : ${text}`)
-      saved.push({ who, text })
+      saved.push({ who, text, ...stats })
       logLine($('log'), who, text)
       $('log').scrollTop = $('log').scrollHeight
       if (role === 'judge') renderDecision(t, q, text)

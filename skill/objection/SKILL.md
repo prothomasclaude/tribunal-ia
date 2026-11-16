@@ -43,8 +43,10 @@ Le greffe est le script `greffe.py` de ce dossier. Il tient à jour le fichier q
 Dans toutes les commandes, `$SKILL` désigne le dossier de base de ce skill, celui que l'invocation indique en tête (« Base directory for this skill »). Remplace-le par ce chemin.
 
 ```bash
-python3 "$SKILL/greffe.py" start "L'affaire en une phrase"
+python3 "$SKILL/greffe.py" start "L'affaire en une phrase" "maquette.html" "Nouveautés=https://claude.ai/artifact/..."
 ```
+
+Après l'affaire, liste les pièces à conviction, une par argument : elles s'affichent dans le dossier de la salle. Donne un nom court (le nom du fichier, jamais son chemin complet : l'écran peut être filmé), ou `Titre=lien` pour un artefact, ce qui le rend cliquable. Sans pièce, ne mets rien.
 
 Cette commande crée le procès et ouvre la salle dans le navigateur.
 
@@ -86,6 +88,14 @@ Un seul témoin par défaut. L'utilisateur peut demander un procès sans témoin
 
 ```bash
 python3 "$SKILL/greffe.py" add "Défense (Claude Sonnet)" "Accusation" <<'REPLIQUE'
+Le texte exact de la réplique.
+REPLIQUE
+```
+
+Ajoute à la fin le temps de travail et le nombre d'actions de l'agent, tels que sa notification de fin les donne (`duration_ms` et `tool_uses`) : la salle les affiche sur la fiche du personnage.
+
+```bash
+python3 "$SKILL/greffe.py" add "Défense (Claude Sonnet)" "Accusation" --ms 9673 --outils 5 <<'REPLIQUE'
 Le texte exact de la réplique.
 REPLIQUE
 ```
