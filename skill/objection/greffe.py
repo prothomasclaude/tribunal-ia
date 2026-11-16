@@ -5,11 +5,14 @@
   greffe.py add "<qui>" "<prochain orateur>"      ajoute la réplique lue sur stdin
   greffe.py add "<qui>"                           dernière réplique : clôt le procès
   greffe.py end ko                                clôt un procès qui a échoué en route
+  greffe.py fait 1 3                              coche dans la salle les étapes de la décision déjà appliquées
+  greffe.py reglement                             affiche le chemin et le contenu du règlement du tribunal
 """
 import json, pathlib, sys, time, webbrowser
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]  # racine du dépôt, même quand le skill est installé par lien symbolique
 F = ROOT / 'proces.js'
+REGLEMENT = ROOT / 'reglement.md'  # critères permanents de l'utilisateur, hors dépôt
 PREFIX = 'window.TRIAL = '
 ROLES = ('Défense', 'Accusation', 'Juge')
 
@@ -47,5 +50,12 @@ elif cmd == 'end':
     trial.pop('next', None)
     trial['done'] = args[:1] != ['ko']
     save(trial)
+elif cmd == 'fait':
+    trial = load()
+    trial['fait'] = sorted(set(trial.get('fait', [])) | {int(a) for a in args})
+    save(trial)
+elif cmd == 'reglement':
+    print(f'FICHIER : {REGLEMENT}')
+    print(REGLEMENT.read_text(encoding='utf-8').strip() if REGLEMENT.exists() else '(aucun règlement pour l\'instant)')
 else:
     sys.exit(__doc__)

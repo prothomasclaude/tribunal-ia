@@ -44,11 +44,16 @@ ln -s "$PWD/skill/objection" ~/.claude/skills/objection
 
 Le lien symbolique est nécessaire : la commande retrouve la salle à partir de l'emplacement du dépôt. Relancez Claude Code pour qu'il détecte la commande.
 
+**Le règlement du tribunal.** Copiez `reglement.exemple.md` en `reglement.md` et écrivez-y vos critères permanents (qui vous êtes, vos priorités, ce que vous ne voulez pas). Les avocats et le Juge le lisent avant chaque procès, pour juger selon vous et pas dans l'absolu. Ce fichier reste sur votre machine, il n'est pas versionné.
+
+**Après le verdict.** Si la décision contient des changements que Claude Code peut faire sur les pièces jugées, il propose de les appliquer, puis coche dans la salle les étapes faites.
+
 Un procès lance cinq prises de parole d'agents (deux manches, puis le Juge), donc il consomme sensiblement plus qu'une question ordinaire.
 
 ## Dans la salle
 
 - **Procès-verbal** à droite de la scène, une couleur par rôle.
+- **Décision de la cour** : les étapes numérotées du verdict deviennent une liste à cocher, mémorisée par procès, avec un bouton pour la copier en Markdown.
 - **Historique** des 30 derniers procès, avec un bouton pour les rejouer dans la salle.
 - **Son et musique** synthétisés dans le navigateur, avec un thème par orateur. Deux cases permettent de les couper.
 - **Interrompre** arrête l'audience en cours.
@@ -60,7 +65,8 @@ Un procès lance cinq prises de parole d'agents (deux manches, puis le Juge), do
 |---|---|
 | `index.html` | Toute la salle : scène sur un canvas, sprites décrits en texte, son en WebAudio, appels OpenRouter, historique. |
 | `skill/objection/SKILL.md` | Les instructions de la commande `/objection` pour Claude Code. |
-| `skill/objection/greffe.py` | Le greffe : écrit le procès en cours dans `proces.js` à la racine du dépôt. |
+| `skill/objection/greffe.py` | Le greffe : écrit le procès en cours dans `proces.js` à la racine du dépôt, lit le règlement, coche les étapes appliquées. |
+| `reglement.exemple.md` | Modèle de règlement du tribunal. |
 
 La page ne peut pas lire de fichier local avec `fetch` quand elle est ouverte en `file://`. Elle recharge donc `proces.js` par une balise `<script>` toutes les quelques secondes, ce qui lui permet de suivre un procès en direct sans serveur.
 

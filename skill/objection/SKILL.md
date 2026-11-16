@@ -22,6 +22,18 @@ Formule l'affaire en une phrase courte, c'est le champ `q`. Pour une pièce à j
 
 S'il n'y a aucun argument, demande l'affaire à l'utilisateur.
 
+### Le règlement du tribunal
+
+Avant tout procès, lis le règlement : ce sont les critères permanents de l'utilisateur (qui il est, ses priorités, ce qu'il ne veut pas). `$SKILL` est défini à la section suivante.
+
+```bash
+python3 "$SKILL/greffe.py" reglement
+```
+
+S'il existe, cite-le en entier dans la consigne de chaque agent, sous le titre « Règlement du tribunal, écrit par le client ». Les avocats plaident au regard de ces critères et le Juge tranche d'abord selon eux. S'il n'existe pas, tiens le procès sans, et signale en une ligne à la fin qu'un règlement rendrait les verdicts plus personnels.
+
+Si l'utilisateur demande à voir, créer ou changer le règlement (par exemple `/objection règlement`), ne lance pas de procès : montre-lui le fichier indiqué par la commande et modifie-le avec lui. Le fichier `reglement.exemple.md`, à côté, sert de modèle.
+
 ## 2. Ouvrir la salle avant les débats
 
 L'utilisateur suit l'audience en direct dans la salle en pixel art : elle affiche qui prépare sa prise de parole, puis joue chaque réplique dès qu'elle est écrite. Il ne doit rien retaper ni cliquer pour que ça démarre.
@@ -50,7 +62,7 @@ Consigne commune à donner à chaque agent, suivie de son rôle :
 
 - **Défense** : « Tu es l'avocat de la Défense. Pour une question, propose une solution concrète à ta première intervention. Pour une pièce, défends ses choix. Tiens ta position contre l'Accusation. 90 mots maximum. »
 - **Accusation** : « Tu es le Procureur. Attaque les failles (coût, complexité, risques, défauts concrets) et plaide pour une alternative précise que tu juges meilleure. 90 mots maximum. »
-- **Juge** : « Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis énonce la décision retenue en étapes concrètes. 150 mots maximum. »
+- **Juge** : « Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum. » La salle transforme ces lignes numérotées en liste à cocher : si le Juge ne les numérote pas en chiffres, redemande-lui cette forme.
 
 **Dès qu'une réplique arrive, verse-la au greffe avant de lancer l'agent suivant**, sinon la salle reste figée. Le premier argument est l'orateur avec son modèle réel entre parenthèses, le second est le prochain orateur attendu (`Défense`, `Accusation` ou `Juge`). La réplique passe par l'entrée standard, telle que l'agent l'a rendue, sans réécriture ni résumé :
 
@@ -75,3 +87,17 @@ Entre deux prises de parole, n'écris rien de plus qu'une courte ligne dans le t
 ## 4. Rendre compte
 
 Dans le terminal, donne le verdict du Juge en entier. N'ajoute pas ton propre avis, sauf si l'utilisateur le demande ou si le verdict repose sur une erreur factuelle que tu as vue dans les pièces.
+
+## 5. Appliquer la décision
+
+Un verdict sert à agir. Regarde les étapes numérotées de la décision :
+
+- Si certaines sont des changements que tu peux faire toi-même sur les pièces jugées (modifier un fichier, corriger un artefact), demande à l'utilisateur s'il veut que tu les appliques, en nommant lesquelles. N'applique rien sans son accord.
+- Les étapes qui ne dépendent pas de toi (une validation par quelqu'un, un choix à faire) restent à l'utilisateur : dis-le.
+- Si la décision ne contient rien que tu puisses appliquer (une simple question de choix, par exemple), ne propose rien.
+
+Après avoir appliqué des étapes, coche-les dans la salle avec leurs numéros, puis dis ce qui est fait et ce qui reste :
+
+```bash
+python3 "$SKILL/greffe.py" fait 1 3
+```

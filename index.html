@@ -41,6 +41,12 @@
   .l-def { border-color: var(--def) !important; } .l-def strong { color: var(--def); }
   .l-judge { border-color: var(--gold) !important; } .l-judge strong { color: var(--gold); }
 
+  #decision { margin-top: 16px; border: 4px solid var(--gold); background: #000; padding: 12px 16px; }
+  #steps { list-style: none; padding: 0; margin: 0 0 12px; }
+  #steps label { display: flex; gap: 10px; align-items: flex-start; padding: 5px 0; font-size: 15px; cursor: pointer; }
+  #steps input { margin-top: 4px; flex: none; }
+  #steps input:checked + span { text-decoration: line-through; color: var(--dim); }
+  #copied { margin-left: 10px; color: var(--dim); font-size: 13px; }
   .below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 28px; }
   form { display: grid; gap: 10px; }
   .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -86,6 +92,12 @@
     </div></aside>
   </div>
 
+  <section id="decision" hidden aria-labelledby="dec-h">
+    <h2 id="dec-h">Décision de la cour</h2>
+    <ol id="steps"></ol>
+    <button id="copy" type="button">Copier la décision</button><span id="copied" role="status"></span>
+  </section>
+
   <div class="below">
     <section>
       <h2>Ouvrir un procès ici</h2>
@@ -122,7 +134,7 @@ const COMMON = "Tu joues dans un tribunal comique où des IA débattent de la me
 const ROLES = {
   def: { name: 'Défense', prefix: 'google/', pitch: 330, sys: "Tu es l'avocat de la Défense. À ta première intervention, propose UNE solution concrète (stack, architecture, périmètre), puis défends-la bec et ongles contre l'Accusation. 90 mots maximum." },
   pro: { name: 'Accusation', prefix: 'openai/', pitch: 200, sys: "Tu es le Procureur. Attaque les failles de la solution de la Défense (coût, complexité, risques) et plaide pour une alternative concrète que tu juges meilleure. 90 mots maximum." },
-  judge: { name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis énonce la solution retenue en étapes concrètes. 150 mots maximum." },
+  judge: { name: 'Juge', prefix: 'anthropic/', pitch: 140, sys: "Tu es le Juge. Rends le verdict : désigne le gagnant (Défense ou Accusation), justifie en deux phrases, puis écris « Décision : » suivi des étapes concrètes retenues, numérotées en chiffres (1., 2., 3.), une par ligne. 150 mots maximum." },
 }
 const roleOf = who => Object.keys(ROLES).find(r => who.startsWith(ROLES[r].name))
 const DEMO = {
@@ -130,7 +142,7 @@ const DEMO = {
         "Calomnie ! Un framework pour trois boutons, c'est louer un stade pour jouer aux billes. Ma cliente tient en un fichier et le jury peut la lire en entier."],
   pro: ["Une page HTML ! Et demain, quand il faudra un état partagé, des tests, une équipe ? Je réclame un vrai framework, avec composants et typage.",
         "La Défense confond simplicité et négligence. Sans structure, chaque ajout sera un crime de plus au dossier. Je maintiens mes réquisitions."],
-  judge: ["Silence ! La cour donne raison à la Défense : le besoin est petit, la solution doit l'être aussi. Solution retenue : 1) un seul fichier HTML, 2) on mesure, 3) on ne passe au framework que si la douleur est prouvée. L'audience est levée. (Mode démo : ajoutez une clé OpenRouter pour un vrai procès.)"],
+  judge: ["Silence ! La cour donne raison à la Défense : le besoin est petit, la solution doit l'être aussi.\n\nDécision :\n1. Un seul fichier HTML, sans build.\n2. On mesure l'usage réel.\n3. On ne passe au framework que si la douleur est prouvée.\n\nL'audience est levée. (Mode démo : ajoutez une clé OpenRouter pour un vrai procès.)"],
 }
 
 // --- Scène pixel (240x120, agrandie en CSS) ---
@@ -423,6 +435,33 @@ function renderHistory() {
 $('clear').onclick = () => { if (confirm('Effacer tout l\'historique des procès ?')) { delete localStorage.trials; renderHistory() } }
 renderHistory()
 
+// --- Décision : les étapes numérotées du verdict deviennent une liste à cocher, mémorisée par procès (clé = date t) ---
+const checks = () => { try { return JSON.parse(localStorage.checks) || {} } catch { return {} } }
+const stepsOf = text => (text || '').match(/^\s*\d+[.)]\s+.+$/gm)?.map(l => l.replace(/^\s*\d+[.)]\s+/, '')) || []
+let shown // la décision affichée : { t, q, text, steps }
+function renderDecision(t, q, text) {
+  const steps = stepsOf(text), done = checks()[t] || []
+  shown = steps.length ? { t, q, text, steps } : null
+  $('decision').hidden = !shown
+  $('copied').textContent = ''
+  $('steps').replaceChildren(...steps.map((step, i) => {
+    const li = document.createElement('li'), lab = document.createElement('label'), cb = document.createElement('input'), sp = document.createElement('span')
+    cb.type = 'checkbox'; cb.checked = done.includes(i + 1); sp.textContent = step
+    cb.onchange = () => {
+      const c = checks()
+      c[t] = (c[t] || []).filter(n => n !== i + 1).concat(cb.checked ? [i + 1] : [])
+      localStorage.checks = JSON.stringify(c)
+    }
+    lab.append(cb, sp); li.append(lab)
+    return li
+  }))
+}
+$('copy').onclick = async () => {
+  const done = checks()[shown.t] || []
+  const md = `## Décision : ${shown.q}\n\n` + shown.steps.map((st, i) => `- [${done.includes(i + 1) ? 'x' : ' '}] ${st}`).join('\n')
+  try { await navigator.clipboard.writeText(md); $('copied').textContent = 'Copié, prêt à coller.' } catch { $('copied').textContent = 'Copie refusée par le navigateur.' }
+}
+
 function busy(on) {
   $('go').disabled = on; $('stop').hidden = !on
   document.querySelectorAll('.replay').forEach(b => b.disabled = on)
@@ -449,10 +488,12 @@ async function trial(replay) {
   music(true)
   ctl = new AbortController()
   $('log').replaceChildren()
-  const lines = [], order = [], saved = [], q = $('case').value
+  const lines = [], order = [], saved = [], q = replay ? replay.q : $('case').value
+  const t = replay ? replay.t : Date.now()
+  renderDecision(t)
   const live = $('key').value.trim()
   let done = false
-  $('affaire').textContent = `${replay ? replay.next ? 'En direct' : 'Rediffusion' : 'Audience'} : ${replay ? replay.q : q}`
+  $('affaire').textContent = `${replay ? replay.next ? 'En direct' : 'Rediffusion' : 'Audience'} : ${q}`
   if (replay) $('stage').scrollIntoView({ behavior: 'smooth', block: 'start' })
   else {
     for (let i = 0; i < +$('rounds').value; i++) order.push('def', 'pro')
@@ -498,6 +539,7 @@ async function trial(replay) {
       saved.push({ who, text })
       logLine($('log'), who, text)
       $('log').scrollTop = $('log').scrollHeight
+      if (role === 'judge') renderDecision(t, q, text)
       st.thinking = true // bouche fermée pendant qu'on lit
       await wait(1500)
     }
@@ -509,7 +551,7 @@ async function trial(replay) {
   st.speaker = null; st.thinking = false
   music(false)
   if (replay) localStorage.trials = JSON.stringify(trials().map(x => x.t === replay.t ? clean(replay) : x)) // un direct s'est allongé depuis son archivage
-  else if (saved.length) localStorage.trials = JSON.stringify([{ t: Date.now(), q, done, log: saved }, ...trials()].slice(0, 30)) // rien à archiver avant la première réplique
+  else if (saved.length) localStorage.trials = JSON.stringify([{ t, q, done, log: saved }, ...trials()].slice(0, 30)) // rien à archiver avant la première réplique
   renderHistory()
   if (replay) dismissed = replay.t
   $('hint').hidden = true
@@ -521,10 +563,18 @@ $('f').onsubmit = e => { e.preventDefault(); trial() }
 // Procès préparé par la commande /objection de Claude Code : proces.js pose window.TRIAL à côté de cette page.
 // La salle le lance toute seule, sans rien redemander. Tant que TRIAL.next est posé, l'audience est en cours côté
 // Claude Code et la salle la suit en direct. Un procès déjà vu (archivé, ou quitté dans cette page) n'est pas relancé.
-let dismissed
+let dismissed, faitSeen // faitSeen : dernière liste d'étapes appliquées déjà reportée, pour ne pas recocher ce que l'utilisateur décoche
 function checkDocket() {
   const T = window.TRIAL
-  if (!T || !Array.isArray(T.log) || $('go').disabled || T.t === dismissed) return
+  if (!T || !Array.isArray(T.log)) return
+  if (T.fait?.length && faitSeen !== T.t + ':' + T.fait) { // étapes que Claude Code a appliquées après le verdict
+    faitSeen = T.t + ':' + T.fait
+    const c = checks()
+    c[T.t] = [...new Set([...(c[T.t] || []), ...T.fait])]
+    localStorage.checks = JSON.stringify(c)
+    if (shown?.t === T.t) renderDecision(shown.t, shown.q, shown.text)
+  }
+  if ($('go').disabled || T.t === dismissed) return
   const known = trials().some(x => x.t === T.t)
   if (known && !T.next) return
   if (!known) { localStorage.trials = JSON.stringify([clean(T), ...trials()].slice(0, 30)); renderHistory() }
