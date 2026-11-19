@@ -10,7 +10,7 @@
   greffe.py fait 1 3                              coche dans la salle les étapes de la décision déjà appliquées
   greffe.py reglement                             affiche le chemin et le contenu du règlement du tribunal
 """
-import json, pathlib, sys, time, webbrowser
+import json, os, pathlib, sys, time, webbrowser
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]  # racine du dépôt, même quand le skill est installé par lien symbolique
 F = ROOT / 'proces.js'
@@ -32,7 +32,8 @@ def save(trial):
 cmd, args = sys.argv[1], sys.argv[2:]
 if cmd == 'start':
     save({'t': int(time.time() * 1000), 'q': args[0], 'done': False, 'next': ROLES[0], 'pieces': args[1:], 'log': []})
-    webbrowser.open((ROOT / 'index.html').as_uri())
+    if not os.environ.get('TRIBUNAL_SALLE_OUVERTE'):  # la salle est déjà affichée ailleurs, par exemple dans Tempo
+        webbrowser.open((ROOT / 'index.html').as_uri())
 elif cmd == 'add':
     stats = {}
     while len(args) >= 2 and args[-2] in ('--ms', '--outils'):
